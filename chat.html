@@ -226,7 +226,20 @@
   let pendingImages = null;   // [{ data, mimeType }] pages of a big scanned PDF, plus pendingNote
   try { localStorage.removeItem('jai_name'); } catch (e) {} // names are no longer used
 
-  const SESSIONS_KEY = 'jai_sessions';
+  // Chat history belongs to the signed-in account: each account gets its own list on this
+  // device, so another person (or another account) never sees your chats. Not signed in = 'guest'.
+  const SESSIONS_KEY = (function () {
+    let who = 'guest';
+    try { who = (localStorage.getItem('teacher_name') || '').trim().toLowerCase() || 'guest'; } catch (e) {}
+    return 'jai_sessions_' + who.replace(/[^a-z0-9@._-]+/g, '_').slice(0, 60);
+  })();
+  try { // old shared list from before accounts: keep it only for guests, never show it to a signed-in account
+    const legacy = localStorage.getItem('jai_sessions');
+    if (legacy !== null) {
+      if (SESSIONS_KEY === 'jai_sessions_guest' && !localStorage.getItem(SESSIONS_KEY)) localStorage.setItem(SESSIONS_KEY, legacy);
+      if (SESSIONS_KEY === 'jai_sessions_guest') localStorage.removeItem('jai_sessions');
+    }
+  } catch (e) {}
   let currentSessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
   let currentMessages = []; // [{sender:'user'|'bot', kind:'text'|'bot-image', text, imageUrl, caption}]
 
@@ -1082,8 +1095,10 @@
     return true;
   }
 
+  const STRUCTURE_RULES = 'CHEMICAL STRUCTURES AND RESONANCE: draw every structure as ONE clean SVG (viewBox="0 0 700 H", white background rect, Arial 14px). NEVER write a structure as a grid or table of separate letters such as C C C C H H H, and never as plain text rows. Draw a benzene ring as a regular hexagon with 6 straight bond lines (flat-top hexagon of radius 40: vertices at angles 0,60,120,180,240,300 degrees from the centre), double bonds as a second shorter parallel line inside the ring; do not print a letter C at the corners. Show a substituent (for example O with a negative charge, OH, NO2) as text at the end of a short line leaving the ring, charges as small superscripts or circled signs next to the atom, and lone pairs as dots. Draw resonance structures side by side, one ring per structure, separated by a double-headed arrow (a line with arrowheads at both ends), with each structure labelled below it (I, II, III, IV). Put the diagram title as a normal heading OUTSIDE the SVG, never on top of the drawing. Nothing may overlap: leave at least 60px between structures and keep every label inside the viewBox.';
   const DOC_HTML_RULES = 'Output ONLY the document body as clean HTML: no <html>, <head> or <body> tags, no Markdown, no code fences, no text before or after. Use <h1> for the title, <h2> for sections, <p>, <ol>/<ul>/<li>, and <table border="1"> for tables. Write superscripts and subscripts with <sup> and <sub> (examples: 1s<sup>2</sup> 2s<sup>2</sup> 2p<sup>6</sup>, H<sub>2</sub>O, Fe<sup>3+</sup>, SO<sub>4</sub><sup>2-</sup>) and italics with <i>. Do not use LaTeX. Keep the original question numbers and put options (a), (b), (c), (d) on separate lines using <br>. Ignore watermarks. ' +
     'FIGURES: never replace a diagram, chart, graph, table, structural formula or reaction scheme by a sentence; reproduce it. Diagrams, displayed or structural formulas, reaction schemes, graphs and apparatus become one inline <svg viewBox="0 0 700 H" width="600"> per figure, placed right after the question it belongs to: white background rect, Arial 13-15px text, bonds as lines (a double bond as two parallel lines), atoms as centred text, reagents and conditions above and below the arrows, nothing overlapping, all labels fully inside the viewBox. If a picture is attached and a figure is too complex to redraw exactly, use <img data-crop="ymin,xmin,ymax,xmax" alt="figure"> with a box on a 0 to 1000 scale measured from the top-left corner of the picture (add data-page="N" when several pictures are attached, counting from 1). ' +
+    STRUCTURE_RULES + ' ' +
     'COMPLETENESS: include EVERY question and every part, in order, to the very end. Never skip, shorten or write "and so on".';
   function detectDocRequest(q) {
     let t = (q || '').toLowerCase();
@@ -1659,7 +1674,7 @@
         // the last two answers go in full ("summarise the above"); older ones are shortened
         let keepFull = 2;
         for (let k = hist.length - 1; k >= 0; k--) { if (hist[k].role === 'model' && keepFull > 0) keepFull--; else hist[k].text = hist[k].text.slice(0, 3000); }
-        requestBody = { mode: 'tutor', prompt: messageText + (hint ? '\n\n' + hint : ''), history: hist.slice(-12), stream: true };
+        requestBody = { mode: 'tutor', prompt: messageText + (hint ? '\n\n' + hint : '') + (/structur|resonan|mechanism|benzene|phenol|phenox|aromatic|lewis|bond|isomer|molecule|draw|diagram/i.test(messageText) ? '\n\n' + STRUCTURE_RULES : ''), history: hist.slice(-12), stream: true };
       }
       if (imageToSend) requestBody.image = imageToSend;
       if (pagesToSend) requestBody.images = pagesToSend;
