@@ -1236,6 +1236,7 @@
       const sp = splitImageMarkers(acc);
       addMessage(sp.clean || acc, 'bot');
       redoIfAbbreviated(sp.clean || acc);
+      checkComplete(sp.clean || acc);
       await addCropFigures(sp.crops, cropSources);
       await figuresOrDiagram(sp.queries, sp.clean);
       return;
@@ -1251,6 +1252,45 @@
     if (autoRedoDone || !answerLooksAbbreviated(text)) return;
     autoRedoDone = true;
     setTimeout(() => regenerateLast("IMPORTANT: your previous answer was incomplete because it used '...' instead of real content. Write the COMPLETE answer now: every row, item and question in full, and never use '...' or '…' as a placeholder."), 400);
+  }
+  // ── Completeness: did the answer give everything that was asked? ──
+  function lastUserQuestion() {
+    for (let k = currentMessages.length - 1; k >= 0; k--) if (currentMessages[k].sender === 'user' && currentMessages[k].kind === 'text') return currentMessages[k].text || '';
+    return '';
+  }
+  function missingParts(q, a) {
+    q = (q || '').toLowerCase(); a = a || '';
+    const miss = [];
+    if (/\b(diagram|draw|sketch|figure|structure|apparatus|graph|curve|flow ?chart|resonance)\b/.test(q) && !/```svg|<svg|```mermaid|\[\[IMAGE|<img/i.test(a)) miss.push('the diagram or figure');
+    if (/\btable\b/.test(q) && !/^\s*\|.*\|/m.test(a)) miss.push('the table');
+    if (/\bmarking scheme|mark scheme|answers? to (all|every|each)|all (the )?answers\b/.test(q) && a.length < 800) miss.push('the full answers for every question');
+    const n = q.match(/\b(\d{1,3})\s+(?:\w+\s+){0,2}(questions?|items?|points?|examples?|mcqs?|problems?|exercises?|steps?)\b/);
+    if (n) { const want = +n[1], got = (a.match(/^\s*(?:\d{1,3}[.)]|[-*•]|\(?[a-z][.)])\s+/gim) || []).length; if (want >= 3 && want <= 100 && got < Math.floor(want * 0.8)) miss.push('all ' + want + ' ' + n[2]); }
+    return miss;
+  }
+  function endsCutOff(a) {
+    a = (a || '').trim(); if (a.length < 400) return false;
+    if ((a.match(/```/g) || []).length % 2) return true;
+    if ((a.match(/<svg[\s>]/gi) || []).length > (a.match(/<\/svg>/gi) || []).length) return true;
+    return !/[.!?:;)\]}»"'”`|*]\s*$/.test(a) && !/\n\s*(\d+[.)]|[-*•])\s.{0,80}$/.test(a) ? /[A-Za-z,]$/.test(a) : false;
+  }
+  let autoRedoIncomplete = false;
+  function checkComplete(text) {
+    const miss = missingParts(lastUserQuestion(), text);
+    if (miss.length && !autoRedoIncomplete && !autoRedoDone) {
+      autoRedoIncomplete = true;
+      setTimeout(() => regenerateLast('IMPORTANT: your previous answer left out ' + miss.join(', ') + '. Write the COMPLETE answer again and include everything the user asked for, in order, in full.'), 300);
+      return;
+    }
+    if (endsCutOff(text)) addContinueButton();
+  }
+  function addContinueButton() {
+    if (document.getElementById('continue-btn')) return;
+    const b = document.createElement('button');
+    b.id = 'continue-btn'; b.type = 'button'; b.textContent = 'Answer stopped early: Continue';
+    b.style.cssText = 'margin:8px 0 8px 12px;padding:7px 14px;border-radius:18px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;font-family:inherit;font-size:.82rem;';
+    b.addEventListener('click', () => { b.remove(); input.value = 'Continue exactly where you stopped. Do not repeat what you already wrote; finish every remaining part.'; sendBtn.click(); });
+    messages.appendChild(b); messages.scrollTop = messages.scrollHeight;
   }
   function regenerateLast(hint) {
     if (sendBtn.disabled) return;
@@ -1591,6 +1631,7 @@
 
   let autoRedoDone = false;
   async function sendQuestion(qOverride, isRetry, hint) {
+    { const cb = document.getElementById('continue-btn'); if (cb) cb.remove(); if (!isRetry) autoRedoIncomplete = false; }
     const question = (qOverride !== undefined ? qOverride : input.value).trim();
     if (!question && !pendingImage && !pendingDoc && !pendingImages) return;
     hideSuggestions();
@@ -1674,7 +1715,7 @@
         // the last two answers go in full ("summarise the above"); older ones are shortened
         let keepFull = 2;
         for (let k = hist.length - 1; k >= 0; k--) { if (hist[k].role === 'model' && keepFull > 0) keepFull--; else hist[k].text = hist[k].text.slice(0, 3000); }
-        requestBody = { mode: 'tutor', prompt: messageText + (hint ? '\n\n' + hint : '') + (/structur|resonan|mechanism|benzene|phenol|phenox|aromatic|lewis|bond|isomer|molecule|draw|diagram/i.test(messageText) ? '\n\n' + STRUCTURE_RULES : ''), history: hist.slice(-12), stream: true };
+        requestBody = { mode: 'tutor', prompt: messageText + '\n\n(Give EVERYTHING the user asked for, every part and every item in order, in full, and finish the answer. Never stop early, skip a part, or use "..." as a placeholder.)' + (hint ? '\n\n' + hint : '') + (/structur|resonan|mechanism|benzene|phenol|phenox|aromatic|lewis|bond|isomer|molecule|draw|diagram/i.test(messageText) ? '\n\n' + STRUCTURE_RULES : ''), history: hist.slice(-12), stream: true };
       }
       if (imageToSend) requestBody.image = imageToSend;
       if (pagesToSend) requestBody.images = pagesToSend;
@@ -1703,7 +1744,7 @@
         const doc = parseDocHtml(answer);
         if (doc) { doc.fmt = docFmt; await resolveDocCrops(doc, cropSources); addDocCard(doc); return; }
       }
-      { const sp = splitImageMarkers(answer); addMessage(sp.clean || answer, 'bot'); redoIfAbbreviated(sp.clean || answer); await addCropFigures(sp.crops, cropSources); if (!data.image && !(data.images && data.images.length)) await figuresOrDiagram(sp.queries, sp.clean); }
+      { const sp = splitImageMarkers(answer); addMessage(sp.clean || answer, 'bot'); redoIfAbbreviated(sp.clean || answer); checkComplete(sp.clean || answer); await addCropFigures(sp.crops, cropSources); if (!data.image && !(data.images && data.images.length)) await figuresOrDiagram(sp.queries, sp.clean); }
       if (Array.isArray(data.images) && data.images.length) {
         data.images.forEach(im => { if (im && im.url) addBotImage(im.url, im.caption); });
       } else if (data.image && data.image.url) {
