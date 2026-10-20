@@ -13,6 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.6/purify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.4/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/smiles-drawer@2.1.7/dist/smiles-drawer.min.js"></script>
 <style>
   :root{--bg:#0d1117;--surface:#161b22;--surface2:#1c2333;--border:#30363d;--accent:#38bdf8;--gold:#e8c547;--green:#34d399;--red:#f87171;--text:#e6edf3;--muted:#8b949e;}
   *{box-sizing:border-box;margin:0;padding:0;}
@@ -493,6 +494,7 @@
       renderer.code = function (code, infostring) {
         const lang = (infostring || '').trim().toLowerCase();
         if (lang === 'mermaid') return `<pre class="mermaid">${escapeHtml(code)}</pre>`;
+        if (lang === 'smiles') return `<div class="smiles-fig" data-smiles="${escapeHtml(code).replace(/"/g, '&quot;')}"></div>`;
         if (lang === 'svg' && window.DOMPurify && /<svg[\s>]/i.test(code)) {
           const clean = DOMPurify.sanitize(ensureSvgViewBox(code), { USE_PROFILES: { svg: true, svgFilters: true } });
           svgStore.push(clean);
@@ -1096,6 +1098,7 @@
   }
 
   const STRUCTURE_RULES = 'CHEMICAL STRUCTURES AND RESONANCE: draw every structure as ONE clean SVG (viewBox="0 0 700 H", white background rect, Arial 14px). NEVER write a structure as a grid or table of separate letters such as C C C C H H H, and never as plain text rows. Draw a benzene ring as a regular hexagon with 6 straight bond lines (flat-top hexagon of radius 40: vertices at angles 0,60,120,180,240,300 degrees from the centre), double bonds as a second shorter parallel line inside the ring; do not print a letter C at the corners. Show a substituent (for example O with a negative charge, OH, NO2) as text at the end of a short line leaving the ring, charges as small superscripts or circled signs next to the atom, and lone pairs as dots. Draw resonance structures side by side, one ring per structure, separated by a double-headed arrow (a line with arrowheads at both ends), with each structure labelled below it (I, II, III, IV). Put the diagram title as a normal heading OUTSIDE the SVG, never on top of the drawing. Nothing may overlap: leave at least 60px between structures and keep every label inside the viewBox.';
+  const TUTOR_RICH_RULES = 'FULL ANSWER STYLE (like a top AI tutor): answer completely and step by step with numbered steps, and show EVERY figure, picture, chart and table that helps, placed right where it is used. (1) Molecules, organic structures, reaction mechanisms and resonance structures: write a fenced code block with the language smiles, one structure per line as SMILES | label, with a line <-> between resonance structures or -> between reactants and products; the browser draws accurate skeletal formulas, so NEVER draw molecules by hand, as a grid of letters, or as plain text. Example for phenol resonance: ```smiles then Oc1ccccc1 | Phenol, then <->, then [O+]=C1C=CC=C[CH-]1 | Resonance form (ortho), then ```. Add a short sentence under it saying what to notice, with curved-arrow electron movement explained in words. (2) Apparatus, graphs, energy profiles, curves and charts: one clean inline svg block with labelled axes with units, tick marks, a title outside the drawing, and nothing overlapping. (3) Processes and flows: a mermaid block. (4) Comparisons and data: a Markdown table. (5) Equations with LaTeX, chemical equations with \\ce{}. Never say you cannot show a figure; always produce it.';
   const DOC_HTML_RULES = 'Output ONLY the document body as clean HTML: no <html>, <head> or <body> tags, no Markdown, no code fences, no text before or after. Use <h1> for the title, <h2> for sections, <p>, <ol>/<ul>/<li>, and <table border="1"> for tables. Write superscripts and subscripts with <sup> and <sub> (examples: 1s<sup>2</sup> 2s<sup>2</sup> 2p<sup>6</sup>, H<sub>2</sub>O, Fe<sup>3+</sup>, SO<sub>4</sub><sup>2-</sup>) and italics with <i>. Do not use LaTeX. Keep the original question numbers and put options (a), (b), (c), (d) on separate lines using <br>. Ignore watermarks. ' +
     'FIGURES: never replace a diagram, chart, graph, table, structural formula or reaction scheme by a sentence; reproduce it. Diagrams, displayed or structural formulas, reaction schemes, graphs and apparatus become one inline <svg viewBox="0 0 700 H" width="600"> per figure, placed right after the question it belongs to: white background rect, Arial 13-15px text, bonds as lines (a double bond as two parallel lines), atoms as centred text, reagents and conditions above and below the arrows, nothing overlapping, all labels fully inside the viewBox. If a picture is attached and a figure is too complex to redraw exactly, use <img data-crop="ymin,xmin,ymax,xmax" alt="figure"> with a box on a 0 to 1000 scale measured from the top-left corner of the picture (add data-page="N" when several pictures are attached, counting from 1). ' +
     STRUCTURE_RULES + ' ' +
@@ -1451,6 +1454,57 @@
     div.appendChild(bar);
   }
 
+  // ── Real chemical structures: the AI writes SMILES, the browser draws accurate skeletal formulas ──
+  // Block format, one structure per line:  SMILES | label     and a line  <->  or  ->  draws an arrow between structures.
+  function renderSmilesIn(root) {
+    if (!root || !window.SmilesDrawer) return;
+    root.querySelectorAll('.smiles-fig').forEach((holder) => {
+      if (holder.dataset.done) return; holder.dataset.done = '1';
+      const NS = 'http://www.w3.org/2000/svg';
+      const items = [];
+      (holder.getAttribute('data-smiles') || '').split('\n').map(l => l.trim()).filter(Boolean).forEach(l => {
+        if (/^(<->|<=>|->|=>|→|⟷|↔)$/.test(l)) items.push({ arrow: /<|⟷|↔/.test(l) ? 'both' : 'one' });
+        else { const parts = l.split('|'); items.push({ smiles: parts[0].trim(), label: (parts[1] || '').trim() }); }
+      });
+      const W = 230, H = 190, GAP = 56, LAB = 26;
+      let x = 0, ok = true; const kids = [];
+      const sd = new SmilesDrawer.SvgDrawer({ width: W, height: H, padding: 14 });
+      for (const it of items) {
+        if (it.arrow) {
+          const t = document.createElementNS(NS, 'text');
+          t.setAttribute('x', x + GAP / 2); t.setAttribute('y', H / 2 + 8); t.setAttribute('text-anchor', 'middle');
+          t.setAttribute('font-size', '26'); t.setAttribute('font-family', 'Arial'); t.setAttribute('fill', '#1d4ed8');
+          t.textContent = it.arrow === 'both' ? '⟷' : '→';
+          kids.push(t); x += GAP; continue;
+        }
+        const svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+        try {
+          SmilesDrawer.parse(it.smiles, (tree) => { sd.draw(tree, svg, 'light'); }, () => { ok = false; });
+        } catch (e) { ok = false; }
+        if (!ok) break;
+        svg.setAttribute('x', x); svg.setAttribute('y', 0);
+        kids.push(svg);
+        if (it.label) {
+          const t = document.createElementNS(NS, 'text');
+          t.setAttribute('x', x + W / 2); t.setAttribute('y', H + 16); t.setAttribute('text-anchor', 'middle');
+          t.setAttribute('font-size', '14'); t.setAttribute('font-family', 'Arial'); t.setAttribute('fill', '#111');
+          t.textContent = it.label; kids.push(t);
+        }
+        x += W;
+      }
+      if (!ok || !kids.length) { // could not draw: show the text instead of a broken picture
+        holder.className = ''; holder.innerHTML = '<pre><code></code></pre>'; holder.querySelector('code').textContent = holder.getAttribute('data-smiles'); return;
+      }
+      const total = document.createElementNS(NS, 'svg');
+      total.setAttribute('xmlns', NS); total.setAttribute('viewBox', '0 0 ' + x + ' ' + (H + LAB));
+      total.setAttribute('width', x); total.setAttribute('height', H + LAB);
+      const bg = document.createElementNS(NS, 'rect'); bg.setAttribute('width', x); bg.setAttribute('height', H + LAB); bg.setAttribute('fill', '#ffffff');
+      total.appendChild(bg); kids.forEach(k => total.appendChild(k));
+      holder.className = 'svg-diagram'; holder.removeAttribute('data-smiles'); holder.innerHTML = ''; holder.appendChild(total);
+    });
+  }
+
   function renderMessage(text, sender) {
     const div = document.createElement('div');
     div.className = 'chat-msg ' + sender;
@@ -1480,7 +1534,7 @@
         messages.scrollTop = messages.scrollHeight;
       });
     }
-    if (sender === 'bot') { decorateDiagrams(div); decorateCode(div); addActionBar(div, text); }
+    if (sender === 'bot') { renderSmilesIn(div); decorateDiagrams(div); decorateCode(div); addActionBar(div, text); }
     if (sender === 'user' && !/^(📷|📄 Attached)/.test(text)) addUserActions(div, text);
     messages.scrollTop = messages.scrollHeight;
     return div;
@@ -1674,7 +1728,7 @@
         // the last two answers go in full ("summarise the above"); older ones are shortened
         let keepFull = 2;
         for (let k = hist.length - 1; k >= 0; k--) { if (hist[k].role === 'model' && keepFull > 0) keepFull--; else hist[k].text = hist[k].text.slice(0, 3000); }
-        requestBody = { mode: 'tutor', prompt: messageText + (hint ? '\n\n' + hint : '') + (/structur|resonan|mechanism|benzene|phenol|phenox|aromatic|lewis|bond|isomer|molecule|draw|diagram/i.test(messageText) ? '\n\n' + STRUCTURE_RULES : ''), history: hist.slice(-12), stream: true };
+        requestBody = { mode: 'tutor', prompt: messageText + (hint ? '\n\n' + hint : '') + '\n\n' + TUTOR_RICH_RULES, history: hist.slice(-12), stream: true };
       }
       if (imageToSend) requestBody.image = imageToSend;
       if (pagesToSend) requestBody.images = pagesToSend;
