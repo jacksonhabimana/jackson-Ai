@@ -134,7 +134,7 @@
   .msg-actions button{background:var(--bg);border:1px solid var(--border);color:var(--muted);border-radius:16px;padding:4px 11px;font-family:'JetBrains Mono',monospace;font-size:.7rem;cursor:pointer;}
   .msg-actions button:hover{border-color:var(--accent);color:var(--accent);}
   .chat-msg.bot .svg-diagram{background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px;margin:.5em 0;overflow-x:auto;text-align:center;}
-  .chat-msg.bot .svg-diagram svg{width:100%;max-width:680px;height:auto;}
+  .chat-msg.bot .svg-diagram > svg{width:100%;max-width:900px;height:auto;}
   .chat-msg.bot .mermaid{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;margin:.5em 0;overflow-x:auto;display:flex;justify-content:center;}
 
   #chat-input-row{display:flex;align-items:center;border-top:1px solid var(--border);padding:10px;gap:8px;}
@@ -946,7 +946,7 @@
       wrap.style.cssText = 'position:fixed;left:-10000px;top:0;';
       const holder = document.createElement('div');
       holder.style.cssText = 'background:#fff;color:#000;';
-      holder.innerHTML = '<style>.pdfdoc{box-sizing:border-box;font-family:Arial,sans-serif;font-size:12pt;line-height:1.5;color:#000;background:#fff;padding:8px}.pdfdoc table{border-collapse:collapse}.pdfdoc td,.pdfdoc th{border:1px solid #444;padding:4px 8px}.pdfdoc pre{background:#f2f2f2;padding:6px;white-space:pre-wrap}.pdfdoc{color:#111}.pdfdoc *{text-shadow:none !important}.pdfdoc .chat-msg{display:block !important;background:#fff !important;border:none !important;box-shadow:none !important;max-width:100% !important;width:auto !important;padding:0 !important;margin:0 0 10px !important;border-radius:0 !important}.pdfdoc td,.pdfdoc th{border:1px solid #999 !important}.pdfdoc .svg-diagram{background:#fff !important;border:1px solid #ccc !important;padding:6px !important;margin:8px 0 !important;overflow:visible !important;text-align:center}.pdfdoc svg{max-width:100% !important}.pdfdoc img{display:block;margin:6px auto}</style><div class="pdfdoc">' + cleanAnswerClone(withFigures(div)).innerHTML + '</div>';
+      holder.innerHTML = '<style>.pdfdoc{box-sizing:border-box;font-family:Arial,sans-serif;font-size:12pt;line-height:1.5;color:#000;background:#fff;padding:8px}.pdfdoc table{border-collapse:collapse}.pdfdoc td,.pdfdoc th{border:1px solid #444;padding:4px 8px}.pdfdoc pre{background:#f2f2f2;padding:6px;white-space:pre-wrap}.pdfdoc{color:#111}.pdfdoc *{text-shadow:none !important}.pdfdoc .chat-msg{display:block !important;background:#fff !important;border:none !important;box-shadow:none !important;max-width:100% !important;width:auto !important;padding:0 !important;margin:0 0 10px !important;border-radius:0 !important}.pdfdoc td,.pdfdoc th{border:1px solid #999 !important}.pdfdoc .svg-diagram{background:#fff !important;border:1px solid #ccc !important;padding:6px !important;margin:8px 0 !important;overflow:visible !important;text-align:center}.pdfdoc .svg-diagram > svg{max-width:100% !important;height:auto}.pdfdoc img{display:block;margin:6px auto}</style><div class="pdfdoc">' + cleanAnswerClone(withFigures(div)).innerHTML + '</div>';
       // html2canvas needs real pixel sizes on SVGs (a bare viewBox gets drawn zoomed in)
       holder.querySelectorAll('svg').forEach(sv => {
         const vb = (sv.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
@@ -1496,6 +1496,7 @@
 
   // ── Real chemical structures: the AI writes SMILES, the browser draws accurate skeletal formulas ──
   // Block format, one structure per line:  SMILES | label     and a line  <->  or  ->  draws an arrow between structures.
+  // Drawn big, with solid black atom letters, at most 3 per row, so it stays readable on screen, in Word and in PDF.
   function renderSmilesIn(root) {
     if (!root || !window.SmilesDrawer) return;
     root.querySelectorAll('.smiles-fig').forEach((holder) => {
@@ -1506,40 +1507,42 @@
         if (/^(<->|<=>|->|=>|→|⟷|↔)$/.test(l)) items.push({ arrow: /<|⟷|↔/.test(l) ? 'both' : 'one' });
         else { const parts = l.split('|'); items.push({ smiles: parts[0].trim(), label: (parts[1] || '').trim() }); }
       });
-      const W = 230, H = 190, GAP = 56, LAB = 26;
-      let x = 0, ok = true; const kids = [];
-      const sd = new SmilesDrawer.SvgDrawer({ width: W, height: H, padding: 14 });
+      const W = 300, H = 240, GAP = 64, LAB = 40, PER_ROW = 3;
+      let ok = true; const kids = [];
+      const sd = new SmilesDrawer.SvgDrawer({ width: W, height: H, padding: 18, bondThickness: 2, bondLength: 38, fontSizeLarge: 17, fontSizeSmall: 12, compactDrawing: false });
+      let x = 0, y = 0, inRow = 0, maxX = 0, pending = null;
+      const arrowAt = (ax, ay, kind) => {
+        const t = document.createElementNS(NS, 'text');
+        t.setAttribute('x', ax + GAP / 2); t.setAttribute('y', ay + H / 2 + 10); t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('font-size', '34'); t.setAttribute('font-family', 'Arial, sans-serif'); t.setAttribute('fill', '#000000');
+        t.textContent = kind === 'both' ? '⟷' : '→'; kids.push(t);
+      };
       for (const it of items) {
-        if (it.arrow) {
-          const t = document.createElementNS(NS, 'text');
-          t.setAttribute('x', x + GAP / 2); t.setAttribute('y', H / 2 + 8); t.setAttribute('text-anchor', 'middle');
-          t.setAttribute('font-size', '26'); t.setAttribute('font-family', 'Arial'); t.setAttribute('fill', '#1d4ed8');
-          t.textContent = it.arrow === 'both' ? '⟷' : '→';
-          kids.push(t); x += GAP; continue;
-        }
+        if (it.arrow) { pending = it.arrow; continue; }
+        if (inRow === PER_ROW) { x = 0; y += H + LAB; inRow = 0; }
+        if (pending) { if (inRow > 0 || y > 0) { arrowAt(x, y, pending); x += GAP; } pending = null; }
         const svg = document.createElementNS(NS, 'svg');
         svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
-        try {
-          SmilesDrawer.parse(it.smiles, (tree) => { sd.draw(tree, svg, 'light'); }, () => { ok = false; });
-        } catch (e) { ok = false; }
+        try { SmilesDrawer.parse(it.smiles, (tree) => { sd.draw(tree, svg, 'oldschool'); }, () => { ok = false; }); } catch (e) { ok = false; }
         if (!ok) break;
-        svg.setAttribute('x', x); svg.setAttribute('y', 0);
+        svg.setAttribute('x', x); svg.setAttribute('y', y);
         kids.push(svg);
         if (it.label) {
           const t = document.createElementNS(NS, 'text');
-          t.setAttribute('x', x + W / 2); t.setAttribute('y', H + 16); t.setAttribute('text-anchor', 'middle');
-          t.setAttribute('font-size', '14'); t.setAttribute('font-family', 'Arial'); t.setAttribute('fill', '#111');
+          t.setAttribute('x', x + W / 2); t.setAttribute('y', y + H + 22); t.setAttribute('text-anchor', 'middle');
+          t.setAttribute('font-size', '20'); t.setAttribute('font-weight', '600'); t.setAttribute('font-family', 'Arial, sans-serif'); t.setAttribute('fill', '#000000');
           t.textContent = it.label; kids.push(t);
         }
-        x += W;
+        x += W; inRow++; if (x > maxX) maxX = x;
       }
       if (!ok || !kids.length) { // could not draw: show the text instead of a broken picture
         holder.className = ''; holder.innerHTML = '<pre><code></code></pre>'; holder.querySelector('code').textContent = holder.getAttribute('data-smiles'); return;
       }
+      const totalH = y + H + LAB;
       const total = document.createElementNS(NS, 'svg');
-      total.setAttribute('xmlns', NS); total.setAttribute('viewBox', '0 0 ' + x + ' ' + (H + LAB));
-      total.setAttribute('width', x); total.setAttribute('height', H + LAB);
-      const bg = document.createElementNS(NS, 'rect'); bg.setAttribute('width', x); bg.setAttribute('height', H + LAB); bg.setAttribute('fill', '#ffffff');
+      total.setAttribute('xmlns', NS); total.setAttribute('viewBox', '0 0 ' + maxX + ' ' + totalH);
+      total.setAttribute('width', maxX); total.setAttribute('height', totalH);
+      const bg = document.createElementNS(NS, 'rect'); bg.setAttribute('width', maxX); bg.setAttribute('height', totalH); bg.setAttribute('fill', '#ffffff');
       total.appendChild(bg); kids.forEach(k => total.appendChild(k));
       holder.className = 'svg-diagram'; holder.removeAttribute('data-smiles'); holder.innerHTML = ''; holder.appendChild(total);
     });
