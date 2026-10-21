@@ -536,11 +536,9 @@
   function cssRgb(str) { const m = String(str).match(/rgba?\(([^)]+)\)/); if (!m) return null; const p = m[1].split(/[,\s/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; }
   function rgbToHsl(r, g, b) { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b); let h = 0, s = 0; const l = (mx + mn) / 2; if (mx !== mn) { const d = mx - mn; s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn); h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h /= 6; } return [h, s, l]; }
   function hslToHex(h, s, l) { const a = s * Math.min(l, 1 - l); const f = n => { const k = (n + h * 12) % 12; const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1); return Math.round(255 * c).toString(16).padStart(2, '0'); }; return '#' + f(0) + f(8) + f(4); }
-  function printTextColor(c) { // light text on the dark chat becomes dark text on paper; coloured words keep their hue, only darker
+  function printTextColor(c) { // every letter in a downloaded Word or PDF file is solid black (the dark chat theme uses light text)
     if (!c || c.a < 0.05) return null;
-    const [h, s, l] = rgbToHsl(c.r, c.g, c.b);
-    if (s < 0.25) return l > 0.6 ? '#111111' : l > 0.3 ? '#444444' : '#111111';
-    return l > 0.5 ? hslToHex(h, Math.max(s, 0.6), 0.33) : hslToHex(h, s, l);
+    return '#000000';
   }
   function printBgColor(c) { // dark panels become light tints of the same colour
     if (!c || c.a < 0.05) return null;
@@ -762,6 +760,18 @@
         c.setAttribute('width', w); c.setAttribute('height', h);
         if (!c.getAttribute('viewBox')) c.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
         c.removeAttribute('style');
+        // letters inside a figure: any light or grey text (made for the dark chat) becomes black on the white page; white text on dark shapes stays white
+        c.querySelectorAll('text, tspan').forEach((t) => {
+          const f = (t.getAttribute('fill') || (t.getAttribute('style') || '').replace(/.*fill\s*:\s*([^;]+).*/i, '$1') || '').trim().toLowerCase();
+          if (!f || f === 'none') { if (!t.getAttribute('fill')) t.setAttribute('fill', '#000000'); return; }
+          if (f === '#fff' || f === '#ffffff' || f === 'white') return;
+          let r, g, bl;
+          const hx = f.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+          if (hx) { let h = hx[1]; if (h.length === 3) h = h.replace(/./g, '$&$&'); r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); bl = parseInt(h.slice(4), 16); }
+          else { const q = cssRgb(f); if (!q) return; r = q.r; g = q.g; bl = q.b; }
+          const lum = (0.299 * r + 0.587 * g + 0.114 * bl) / 255;
+          if (lum > 0.35 && lum < 0.98) { t.setAttribute('fill', '#000000'); if (t.style) t.style.fill = '#000000'; }
+        });
         const xml = new XMLSerializer().serializeToString(c);
         const img = new Image();
         img.onload = () => {
@@ -946,7 +956,7 @@
       wrap.style.cssText = 'position:fixed;left:-10000px;top:0;';
       const holder = document.createElement('div');
       holder.style.cssText = 'background:#fff;color:#000;';
-      holder.innerHTML = '<style>.pdfdoc{box-sizing:border-box;font-family:Arial,sans-serif;font-size:12pt;line-height:1.5;color:#000;background:#fff;padding:8px}.pdfdoc table{border-collapse:collapse}.pdfdoc td,.pdfdoc th{border:1px solid #444;padding:4px 8px}.pdfdoc pre{background:#f2f2f2;padding:6px;white-space:pre-wrap}.pdfdoc{color:#111}.pdfdoc *{text-shadow:none !important}.pdfdoc .chat-msg{display:block !important;background:#fff !important;border:none !important;box-shadow:none !important;max-width:100% !important;width:auto !important;padding:0 !important;margin:0 0 10px !important;border-radius:0 !important}.pdfdoc td,.pdfdoc th{border:1px solid #999 !important}.pdfdoc .svg-diagram{background:#fff !important;border:1px solid #ccc !important;padding:6px !important;margin:8px 0 !important;overflow:visible !important;text-align:center}.pdfdoc .svg-diagram > svg{max-width:100% !important;height:auto}.pdfdoc img{display:block;margin:6px auto}</style><div class="pdfdoc">' + cleanAnswerClone(withFigures(div)).innerHTML + '</div>';
+      holder.innerHTML = '<style>.pdfdoc{box-sizing:border-box;font-family:Arial,sans-serif;font-size:12pt;line-height:1.5;color:#000;background:#fff;padding:8px}.pdfdoc *:not(svg *){color:#000 !important}.pdfdoc table{border-collapse:collapse}.pdfdoc td,.pdfdoc th{border:1px solid #444;padding:4px 8px}.pdfdoc pre{background:#f2f2f2;padding:6px;white-space:pre-wrap}.pdfdoc{color:#000}.pdfdoc *{text-shadow:none !important}.pdfdoc .chat-msg{display:block !important;background:#fff !important;border:none !important;box-shadow:none !important;max-width:100% !important;width:auto !important;padding:0 !important;margin:0 0 10px !important;border-radius:0 !important}.pdfdoc td,.pdfdoc th{border:1px solid #999 !important}.pdfdoc .svg-diagram{background:#fff !important;border:1px solid #ccc !important;padding:6px !important;margin:8px 0 !important;overflow:visible !important;text-align:center}.pdfdoc .svg-diagram > svg{max-width:100% !important;height:auto}.pdfdoc img{display:block;margin:6px auto}</style><div class="pdfdoc">' + cleanAnswerClone(withFigures(div)).innerHTML + '</div>';
       // html2canvas needs real pixel sizes on SVGs (a bare viewBox gets drawn zoomed in)
       holder.querySelectorAll('svg').forEach(sv => {
         const vb = (sv.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
