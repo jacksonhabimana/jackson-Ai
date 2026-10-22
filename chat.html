@@ -494,6 +494,7 @@
       renderer.code = function (code, infostring) {
         const lang = (infostring || '').trim().toLowerCase();
         if (lang === 'mermaid') return `<pre class="mermaid">${escapeHtml(code)}</pre>`;
+        if (lang === 'scheme') return `<div class="scheme-fig" data-scheme="${escapeHtml(code).replace(/"/g, '&quot;')}"></div>`;
         if (lang === 'smiles') return `<div class="smiles-fig" data-smiles="${escapeHtml(code).replace(/"/g, '&quot;')}"></div>`;
         if (lang === 'svg' && window.DOMPurify && /<svg[\s>]/i.test(code)) {
           const clean = DOMPurify.sanitize(ensureSvgViewBox(code), { USE_PROFILES: { svg: true, svgFilters: true } });
@@ -1108,7 +1109,7 @@
   }
 
   const STRUCTURE_RULES = 'CHEMICAL STRUCTURES AND RESONANCE: draw every structure as ONE clean SVG (viewBox="0 0 700 H", white background rect, Arial 14px). NEVER write a structure as a grid or table of separate letters such as C C C C H H H, and never as plain text rows. Draw a benzene ring as a regular hexagon with 6 straight bond lines (flat-top hexagon of radius 40: vertices at angles 0,60,120,180,240,300 degrees from the centre), double bonds as a second shorter parallel line inside the ring; do not print a letter C at the corners. Show a substituent (for example O with a negative charge, OH, NO2) as text at the end of a short line leaving the ring, charges as small superscripts or circled signs next to the atom, and lone pairs as dots. Draw resonance structures side by side, one ring per structure, separated by a double-headed arrow (a line with arrowheads at both ends), with each structure labelled below it (I, II, III, IV). Put the diagram title as a normal heading OUTSIDE the SVG, never on top of the drawing. Nothing may overlap: leave at least 60px between structures and keep every label inside the viewBox.';
-  const TUTOR_RICH_RULES = 'FULL ANSWER STYLE (like a top AI tutor): answer completely and step by step with numbered steps, and show EVERY figure, picture, chart and table that helps, placed right where it is used. (1) Molecules, organic structures, reaction mechanisms and resonance structures: write a fenced code block with the language smiles, one structure per line as SMILES | label, with a line <-> between resonance structures or -> between reactants and products; the browser draws accurate skeletal formulas, so NEVER draw molecules by hand, as a grid of letters, or as plain text. Example for phenol resonance: ```smiles then Oc1ccccc1 | Phenol, then <->, then [O+]=C1C=CC=C[CH-]1 | Resonance form (ortho), then ```. Add a short sentence under it saying what to notice, with curved-arrow electron movement explained in words. (2) Apparatus, graphs, energy profiles, curves and charts: one clean inline svg block with labelled axes with units, tick marks, a title outside the drawing, and nothing overlapping. (3) Processes and flows: a mermaid block. (4) Comparisons and data: a Markdown table. (5) Equations with LaTeX, chemical equations with \\ce{}. Never say you cannot show a figure; always produce it.';
+  const TUTOR_RICH_RULES = 'FULL ANSWER STYLE (like a top AI tutor): answer completely and step by step with numbered steps, and show EVERY figure, picture, chart and table that helps, placed right where it is used. (1) Molecules, organic structures, reaction mechanisms and resonance structures: write a fenced code block with the language smiles, one structure per line as SMILES | label, with a line <-> between resonance structures or -> between reactants and products; the browser draws accurate skeletal formulas, so NEVER draw molecules by hand, as a grid of letters, or as plain text. Example for phenol resonance: ```smiles then Oc1ccccc1 | Phenol, then <->, then [O+]=C1C=CC=C[CH-]1 | Resonance form (ortho), then ```. Add a short sentence under it saying what to notice, with curved-arrow electron movement explained in words. (1b) REACTION SCHEMES, multi-step syntheses, conversions and multi-path reactions: ALWAYS use a fenced code block with the language scheme, never ASCII or text boxes. Format: first line start: SMILES | name of the starting compound, then one line per product: SMILES | label such as [A] or the product name | reagents and conditions written above the arrow (separate reagents with semicolons, write formulas like H2SO4 plainly). Several product lines = several paths from the same start; add a first line mode: chain when the steps follow one another (A then B then C). Example (each line on its own line): ```scheme\nstart: CC#C | Propyne\nCC#CC | [A] | NaNH2, liq. NH3; then CH3Br\nCC(C)=O | [B] | HgSO4, H2SO4, H2O\nCCC=O | [C] | 1. R2BH; 2. H2O2, NaOH\nCC=C | [D] | H2, Lindlar catalyst\nCC#C[Ag] | [E] (ppt) | Ag(NH3)2+ OH-\n``` If you are unsure of a SMILES, write ? in its place and the name is shown in a box. (2) Apparatus, graphs, energy profiles, curves and charts: one clean inline svg block with labelled axes with units, tick marks, a title outside the drawing, and nothing overlapping. (3) Processes and flows: a mermaid block. (4) Comparisons and data: a Markdown table. (5) Equations with LaTeX, chemical equations with \\ce{}. Never say you cannot show a figure; always produce it.';
   const DOC_HTML_RULES = 'Output ONLY the document body as clean HTML: no <html>, <head> or <body> tags, no Markdown, no code fences, no text before or after. Use <h1> for the title, <h2> for sections, <p>, <ol>/<ul>/<li>, and <table border="1"> for tables. Write superscripts and subscripts with <sup> and <sub> (examples: 1s<sup>2</sup> 2s<sup>2</sup> 2p<sup>6</sup>, H<sub>2</sub>O, Fe<sup>3+</sup>, SO<sub>4</sub><sup>2-</sup>) and italics with <i>. Do not use LaTeX. Keep the original question numbers and put options (a), (b), (c), (d) on separate lines using <br>. Ignore watermarks. ' +
     'FIGURES: never replace a diagram, chart, graph, table, structural formula or reaction scheme by a sentence; reproduce it. Diagrams, displayed or structural formulas, reaction schemes, graphs and apparatus become one inline <svg viewBox="0 0 700 H" width="600"> per figure, placed right after the question it belongs to: white background rect, Arial 13-15px text, bonds as lines (a double bond as two parallel lines), atoms as centred text, reagents and conditions above and below the arrows, nothing overlapping, all labels fully inside the viewBox. If a picture is attached and a figure is too complex to redraw exactly, use <img data-crop="ymin,xmin,ymax,xmax" alt="figure"> with a box on a 0 to 1000 scale measured from the top-left corner of the picture (add data-page="N" when several pictures are attached, counting from 1). ' +
     STRUCTURE_RULES + ' ' +
@@ -1558,6 +1559,114 @@
     });
   }
 
+  // ── Reaction schemes drawn as a real picture: structures, arrows and reagents written above each arrow ──
+  // ```scheme block:   start: SMILES | name        then one line per product:   SMILES | name | reagents
+  // default = branches (one start, several paths); first line "mode: chain" = one step after another.
+  function renderSchemeIn(root) {
+    if (!root || !window.SmilesDrawer) return;
+    root.querySelectorAll('.scheme-fig').forEach((holder) => {
+      if (holder.dataset.done) return; holder.dataset.done = '1';
+      const NS = 'http://www.w3.org/2000/svg';
+      const raw = holder.getAttribute('data-scheme') || '';
+      let mode = 'branches', start = null; const steps = [];
+      raw.split('\n').map(l => l.trim()).filter(Boolean).forEach(l => {
+        let m;
+        if ((m = l.match(/^mode\s*:\s*(\w+)/i))) { mode = /chain|linear|steps/i.test(m[1]) ? 'chain' : 'branches'; return; }
+        if ((m = l.match(/^start\s*:\s*(.*)$/i))) { const q = m[1].split('|'); start = { smiles: (q[0] || '').trim(), label: (q[1] || '').trim() }; return; }
+        const q = l.split('|'); steps.push({ smiles: (q[0] || '').trim(), label: (q[1] || '').trim(), reagents: (q.slice(2).join('|') || '').trim() });
+      });
+      if (!start || !steps.length) { holder.className = ''; holder.innerHTML = '<pre><code></code></pre>'; holder.querySelector('code').textContent = raw; return; }
+
+      const CW = mode === 'chain' ? 220 : 250, CH = 170, AW = mode === 'chain' ? 210 : 230, LAB = 38, PER_ROW = 3;
+      const sd = new SmilesDrawer.SvgDrawer({ width: CW, height: CH, padding: 16, bondThickness: 2, bondLength: 36, fontSizeLarge: 16, fontSizeSmall: 11, compactDrawing: false });
+      const el = (n, a, txt) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; return e; };
+      const kids = [];
+      // text with chemical subscripts (H2SO4 -> H₂SO₄), centred, wrapped to a few lines
+      function chemText(txt, cx, bottomY, size, bold, anchor) {
+        const words = txt.split(/\s+/).filter(Boolean), lines = []; let cur = '';
+        words.forEach(w => { if ((cur + ' ' + w).trim().length > 24 && cur) { lines.push(cur); cur = w; } else cur = (cur + ' ' + w).trim(); });
+        if (cur) lines.push(cur);
+        const lh = size + 4, top = bottomY - (lines.length - 1) * lh;
+        lines.forEach((ln, i) => {
+          const t = el('text', { x: cx, y: top + i * lh, 'text-anchor': anchor || 'middle', 'font-size': size, 'font-family': 'Arial, sans-serif', fill: '#000000' });
+          if (bold) t.setAttribute('font-weight', '700');
+          let k = 0;
+          while (k < ln.length) {
+            const isSub = k > 0 && /[0-9]/.test(ln[k]) && /[A-Za-z)\]]/.test(ln[k - 1]) && !/[0-9]/.test(ln[k - 1]);
+            if (isSub) {
+              let j = k; while (j < ln.length && /[0-9]/.test(ln[j])) j++;
+              t.appendChild(el('tspan', { 'font-size': Math.round(size * 0.72), dy: Math.round(size * 0.3) }, ln.slice(k, j)));
+              if (j < ln.length) { // return to the baseline for the next piece
+                let e = j; while (e < ln.length && !(/[0-9]/.test(ln[e]) && /[A-Za-z)\]]/.test(ln[e - 1]) && !/[0-9]/.test(ln[e - 1]))) e++;
+                t.appendChild(el('tspan', { dy: -Math.round(size * 0.3) }, ln.slice(j, e))); k = e;
+              } else k = j;
+            } else {
+              let e = k + 1; while (e < ln.length && !(/[0-9]/.test(ln[e]) && /[A-Za-z)\]]/.test(ln[e - 1]) && !/[0-9]/.test(ln[e - 1]))) e++;
+              t.appendChild(el('tspan', {}, ln.slice(k, e))); k = e;
+            }
+          }
+          kids.push(t);
+        });
+        return lines.length;
+      }
+      function cell(c, x, y) { // one structure (or just its name if it cannot be drawn) with its label under it
+        let drawn = false;
+        if (c.smiles && c.smiles !== '?' && c.smiles !== '-') {
+          const svg = el('svg', { width: CW, height: CH, viewBox: '0 0 ' + CW + ' ' + CH, x, y });
+          let bad = false;
+          try { SmilesDrawer.parse(c.smiles, (tree) => { sd.draw(tree, svg, 'oldschool'); }, () => { bad = true; }); } catch (e) { bad = true; }
+          if (!bad && svg.childNodes.length) { kids.push(svg); drawn = true; }
+        }
+        if (!drawn) { kids.push(el('rect', { x: x + 40, y: y + CH / 2 - 26, width: CW - 80, height: 52, rx: 10, fill: '#ffffff', stroke: '#000000', 'stroke-width': 2 })); chemText(c.label || c.smiles || '?', x + CW / 2, y + CH / 2 + 6, 20, true); return; }
+        if (c.label) chemText(c.label, x + CW / 2, y + CH + 16, 19, true);
+      }
+      function arrow(x1, x2, y, reagents) {
+        kids.push(el('line', { x1, y1: y, x2: x2 - 4, y2: y, stroke: '#000000', 'stroke-width': 2.5 }));
+        kids.push(el('polygon', { points: (x2) + ',' + y + ' ' + (x2 - 13) + ',' + (y - 7) + ' ' + (x2 - 13) + ',' + (y + 7), fill: '#000000' }));
+        if (reagents) chemText(reagents.replace(/\s*;\s*/g, '; '), (x1 + x2) / 2, y - 12, 17, false);
+      }
+
+      let W = 0, Ht = 0, startFix = null;
+      if (mode === 'branches') {
+        const RH = CH + LAB + 4, n = steps.length, midY = (n * RH) / 2;
+        const sy = Math.max(0, midY - CH / 2 - 10);
+        cell(start, 0, sy);
+        const startSvgEl = kids.length && kids[kids.length - 2] && kids[kids.length - 2].tagName === 'svg' ? kids[kids.length - 2] : (kids[kids.length - 1] && kids[kids.length - 1].tagName === 'svg' ? kids[kids.length - 1] : null);
+        const busX = CW + 24;
+        const rowsY = steps.map((st, i) => i * RH + CH / 2);
+        const startLine = el('line', { x1: CW - 26, y1: sy + CH / 2, x2: busX, y2: sy + CH / 2, stroke: '#000000', 'stroke-width': 2.5 });
+        kids.push(startLine); startFix = { svg: startSvgEl, line: startLine };
+        if (n > 1) kids.push(el('line', { x1: busX, y1: rowsY[0], x2: busX, y2: rowsY[n - 1], stroke: '#000000', 'stroke-width': 2.5 }));
+        steps.forEach((st, i) => {
+          arrow(busX, CW + 24 + AW + 30, rowsY[i], st.reagents);
+          cell(st, CW + 24 + AW + 30, i * RH);
+        });
+        W = CW + 24 + AW + 30 + CW; Ht = n * RH;
+      } else {
+        const all = [{ c: start, rg: '' }].concat(steps.map(st => ({ c: st, rg: st.reagents })));
+        let x = 0, y = 0, inRow = 0, maxX = 0;
+        all.forEach((it, idx) => {
+          if (inRow === PER_ROW) { x = 0; y += CH + LAB + 30; inRow = 0; }
+          if (idx > 0) { arrow(x, x + AW, y + CH / 2, it.rg); x += AW; }
+          cell(it.c, x, y); x += CW; inRow++; if (x > maxX) maxX = x;
+        });
+        W = maxX; Ht = y + CH + LAB;
+      }
+      const total = el('svg', { xmlns: NS, viewBox: '0 0 ' + W + ' ' + Ht, width: W, height: Ht });
+      total.appendChild(el('rect', { width: W, height: Ht, fill: '#ffffff' }));
+      kids.forEach(k => total.appendChild(k));
+      holder.className = 'svg-diagram'; holder.removeAttribute('data-scheme'); holder.innerHTML = ''; holder.appendChild(total);
+      // make the connector start right at the end of the starting molecule (its drawing is centred inside its cell)
+      try {
+        if (startFix && startFix.svg) {
+          const tr = total.getBoundingClientRect(); const sc = tr.width / W; let maxR = 0;
+          startFix.svg.querySelectorAll('line,path,text,polygon,circle').forEach((e) => { const r = e.getBoundingClientRect(); if (r.width || r.height) maxR = Math.max(maxR, r.right); });
+          if (maxR && sc) startFix.line.setAttribute('x1', Math.max(0, Math.min(CW - 6, (maxR - tr.left) / sc - 1)));
+        }
+      } catch (e) {}
+    });
+  }
+
   function renderMessage(text, sender) {
     const div = document.createElement('div');
     div.className = 'chat-msg ' + sender;
@@ -1587,7 +1696,7 @@
         messages.scrollTop = messages.scrollHeight;
       });
     }
-    if (sender === 'bot') { renderSmilesIn(div); decorateDiagrams(div); decorateCode(div); addActionBar(div, text); }
+    if (sender === 'bot') { renderSmilesIn(div); renderSchemeIn(div); decorateDiagrams(div); decorateCode(div); addActionBar(div, text); }
     if (sender === 'user' && !/^(📷|📄 Attached)/.test(text)) addUserActions(div, text);
     messages.scrollTop = messages.scrollHeight;
     return div;
