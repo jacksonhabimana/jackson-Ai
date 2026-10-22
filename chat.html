@@ -1397,7 +1397,7 @@
   async function figuresOrDiagram(queries, answerText) {
     if (!queries || !queries.length) return;
     const n = await addFiguresFor(queries);
-    if (!n && !/```svg|<svg/i.test(answerText || '')) await drawFallbackDiagram(queries[0]);
+    if (!n && !/```svg|<svg|```smiles|```mermaid/i.test(answerText || '')) await drawFallbackDiagram(queries[0]);
   }
   function loadPngBlob(url) { // image URL -> PNG blob (needs a CORS-enabled image, which Wikimedia is)
     return new Promise((resolve, reject) => {
