@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>PDF Book Cleaner — Jackson AI</title>
+<style>
+:root{--bg:#0d1117;--surface:#161b22;--surface2:#1c2333;--border:#30363d;--accent:#38bdf8;--green:#34d399;--red:#f87171;--gold:#e8c547;--text:#e6edf3;--muted:#8b949e;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;line-height:1.6}
+header{padding:28px 20px 10px;text-align:center}
+header h1{font-size:clamp(1.5rem,4vw,2.2rem)}
+header h1 em{color:var(--gold);font-style:normal}
+header p{color:var(--muted);max-width:640px;margin:8px auto 0;font-size:.95rem}
+main{max-width:860px;margin:0 auto;padding:16px 16px 80px;display:grid;gap:16px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}
+.card h2{font-size:1rem;margin-bottom:10px;color:var(--accent)}
+label{display:block;font-size:.85rem;color:var(--muted);margin:10px 0 4px}
+textarea,input[type=text]{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:#fff;padding:9px 11px;font:inherit;font-size:.9rem}
+textarea{min-height:84px;resize:vertical}
+.drop{border:2px dashed var(--border);border-radius:12px;padding:26px;text-align:center;cursor:pointer;color:var(--muted)}
+.drop.over,.drop:hover{border-color:var(--accent);color:var(--text)}
+.drop b{color:var(--text)}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.chk{display:flex;gap:8px;align-items:center;font-size:.9rem;margin:6px 0;color:var(--text)}
+.chk input{width:18px;height:18px}
+button{background:var(--accent);color:#001018;border:0;border-radius:8px;padding:10px 18px;font-weight:700;font-size:.95rem;cursor:pointer}
+button.sec{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+button:disabled{opacity:.5;cursor:not-allowed}
+#log{background:#010409;border:1px solid var(--border);border-radius:8px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:.78rem;color:var(--muted);max-height:220px;overflow:auto;white-space:pre-wrap;display:none}
+.bar{height:8px;background:var(--surface2);border-radius:6px;overflow:hidden;display:none}
+.bar>i{display:block;height:100%;width:35%;background:var(--accent);animation:mv 1.2s infinite ease-in-out}
+@keyframes mv{0%{margin-left:-35%}100%{margin-left:100%}}
+.hint{font-size:.8rem;color:var(--muted)}
+.ok{color:var(--green)} .err{color:var(--red)}
+a.back{color:var(--accent);font-size:.85rem;text-decoration:none}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="index.html">← Jackson AI</a>
+  <h1>PDF Book <em>Cleaner</em></h1>
+  <p>Upload a textbook PDF, say what to remove, and get back a clean copy: boxes removed, gaps closed, footers replaced, pages renumbered and a new table of contents that matches.</p>
+</header>
+<main>
+
+<div class="card">
+  <h2>1. Your book</h2>
+  <div class="drop" id="drop"><div>📕 <b>Click to choose a PDF</b> or drop it here</div><div class="hint" id="fname">No file chosen</div></div>
+  <input type="file" id="file" accept="application/pdf,.pdf" style="display:none">
+</div>
+
+<div class="card">
+  <h2>2. What should be done?</h2>
+  <label>Describe it in your own words (optional) <span class="hint">— e.g. “remove learning activities, application activities and the foreword”</span></label>
+  <textarea id="ask" placeholder="remove ..."></textarea>
+  <div class="row" style="margin-top:8px">
+    <button class="sec" id="parse">Fill the boxes from my words</button>
+    <button class="sec" id="preset">Use REB textbook settings</button>
+  </div>
+
+  <label>Remove boxes / sections that start with these titles <span class="hint">(one per line)</span></label>
+  <textarea id="titles"></textarea>
+  <label>Remove these parts completely up to the end of each chapter/unit <span class="hint">(one per line, e.g. End of unit assessment)</span></label>
+  <textarea id="toend" style="min-height:52px"></textarea>
+  <label>Delete pages that start with these titles <span class="hint">(e.g. Foreword, Acknowledgement, References)</span></label>
+  <textarea id="pagetitles" style="min-height:52px"></textarea>
+  <label>Delete these page numbers <span class="hint">(e.g. 2-4, 383)</span></label>
+  <input type="text" id="pages" placeholder="">
+  <label>Word that marks each chapter start <span class="hint">(UNIT, CHAPTER … leave as it is for REB books)</span></label>
+  <input type="text" id="chapword" value="UNIT|CHAPTER|Unit|Chapter">
+</div>
+
+<div class="card">
+  <h2>3. Layout</h2>
+  <label class="chk"><input type="checkbox" id="footers" checked> Remove the old footers</label>
+  <label class="chk"><input type="checkbox" id="reflow" checked> Close all gaps and renumber the pages</label>
+  <label class="chk"><input type="checkbox" id="toc" checked> Rebuild the table of contents with correct page numbers</label>
+  <label>My footer on every page (bold, black)</label>
+  <input type="text" id="footer" value="https://jacksonhabimana.github.io/jackson-Ai/">
+</div>
+
+<div class="card">
+  <h2>4. Clean it</h2>
+  <div class="row"><button id="go">Clean my book</button><button class="sec" id="dl" style="display:none">⬇ Download cleaned PDF</button></div>
+  <div class="bar" id="bar"><i></i></div>
+  <p class="hint" id="status" style="margin-top:8px">A 400-page book takes about 3–5 minutes. Keep this page open.</p>
+  <pre id="log"></pre>
+  <details style="margin-top:12px"><summary class="hint" style="cursor:pointer">Server address (set once)</summary>
+    <input type="text" id="server" placeholder="https://your-space.hf.space">
+    <p class="hint">This is the address of your PDF Cleaner server (see pdf-cleaner/README.md).</p>
+  </details>
+</div>
+</main>
+
+<script>
+// Put your server address here after you deploy pdf-cleaner/ (it can also be typed in the page).
+const DEFAULT_SERVER = "";
+
+const $ = id => document.getElementById(id);
+let chosen = null, jobId = null, base = "";
+const lines = id => $(id).value.split("\n").map(s => s.trim()).filter(Boolean);
+try { base = localStorage.getItem("pdfCleanerServer") || DEFAULT_SERVER; } catch (e) { base = DEFAULT_SERVER; }
+$("server").value = base;
+$("server").addEventListener("change", () => { base = $("server").value.trim().replace(/\/+$/, ""); try { localStorage.setItem("pdfCleanerServer", base); } catch (e) {} });
+
+$("drop").onclick = () => $("file").click();
+["dragover", "dragenter"].forEach(e => $("drop").addEventListener(e, ev => { ev.preventDefault(); $("drop").classList.add("over"); }));
+["dragleave", "drop"].forEach(e => $("drop").addEventListener(e, ev => { ev.preventDefault(); $("drop").classList.remove("over"); }));
+$("drop").addEventListener("drop", ev => pick(ev.dataTransfer.files[0]));
+$("file").onchange = () => pick($("file").files[0]);
+function pick(f) {
+  if (!f) return;
+  if (!/\.pdf$/i.test(f.name)) { alert("Please choose a PDF file."); return; }
+  chosen = f; $("fname").textContent = f.name + " (" + (f.size / 1048576).toFixed(1) + " MB)";
+}
+
+$("preset").onclick = () => {
+  $("titles").value = ["Learning Activity", "Introductory activity", "Application activity", "Key Unit Competence", "Learning objectives", "Knowledge and understanding", "Skills", "Attitudes and values"].join("\n");
+  $("toend").value = "End of unit assessment";
+  $("pagetitles").value = ["Foreword", "Acknowledgement", "Copyright", "References"].join("\n");
+};
+
+// very simple reader of sentences like "remove X, Y and Z" (no AI needed)
+$("parse").onclick = () => {
+  const t = $("ask").value;
+  if (!t.trim()) return;
+  const known = [
+    [/learning activit/i, "Learning Activity", "titles"], [/introductory activit/i, "Introductory activity", "titles"],
+    [/application activit/i, "Application activity", "titles"], [/key unit competence/i, "Key Unit Competence", "titles"],
+    [/learning objective/i, "Learning objectives", "titles"], [/attitudes and values/i, "Attitudes and values", "titles"],
+    [/knowledge and (understanding|skills)/i, "Knowledge and understanding", "titles"], [/\bskills\b/i, "Skills", "titles"],
+    [/end of (unit )?assessment/i, "End of unit assessment", "toend"],
+    [/foreword|forward/i, "Foreword", "pagetitles"], [/acknowledg/i, "Acknowledgement", "pagetitles"],
+    [/copyright|copy right/i, "Copyright", "pagetitles"], [/reference/i, "References", "pagetitles"]
+  ];
+  const add = (id, v) => { const cur = lines(id); if (!cur.includes(v)) { cur.push(v); $(id).value = cur.join("\n"); } };
+  known.forEach(([re, v, id]) => { if (re.test(t)) add(id, v); });
+  // anything in quotes is taken as an extra title
+  (t.match(/["“']([^"”']{3,60})["”']/g) || []).forEach(q => add("titles", q.slice(1, -1)));
+  const pg = t.match(/pages?\s+([\d,\s\-and]+)/i);
+  if (pg) $("pages").value = pg[1].replace(/and/g, ",").replace(/\s+/g, "").replace(/,+/g, ",").replace(/^,|,$/g, "");
+  if (/footer/i.test(t) && /(remove|delete)/i.test(t)) $("footers").checked = true;
+};
+
+function options() {
+  const w = ($("chapword").value || "UNIT|CHAPTER").trim();
+  return {
+    remove_titles: lines("titles"), remove_to_chapter_end: lines("toend"),
+    drop_pages_titled: lines("pagetitles"),
+    drop_pages: $("pages").value.split(",").map(s => s.trim()).filter(Boolean),
+    remove_footers: $("footers").checked, reflow: $("reflow").checked, rebuild_toc: $("toc").checked,
+    footer_text: $("footer").value.trim(), footer_bold: true,
+    chapter_label_regex: "^(" + w + ")(\\s*\\d+)?$"
+  };
+}
+
+function setBusy(b, msg, cls) {
+  $("go").disabled = b; $("bar").style.display = b ? "block" : "none";
+  if (msg !== undefined) { $("status").textContent = msg; $("status").className = "hint " + (cls || ""); }
+}
+
+$("go").onclick = async () => {
+  if (!chosen) { alert("Choose your PDF first."); return; }
+  base = ($("server").value || DEFAULT_SERVER).trim().replace(/\/+$/, "");
+  if (!base) { alert("Open “Server address” below and paste the address of your PDF Cleaner server first."); $("server").closest("details").open = true; return; }
+  $("dl").style.display = "none"; $("log").style.display = "block"; $("log").textContent = "";
+  setBusy(true, "Uploading…");
+  try {
+    const fd = new FormData(); fd.append("file", chosen); fd.append("options", JSON.stringify(options()));
+    const r = await fetch(base + "/clean", { method: "POST", body: fd });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || ("Server said " + r.status));
+    jobId = (await r.json()).job;
+    setBusy(true, "Working… this takes a few minutes.");
+    poll();
+  } catch (e) { setBusy(false, "Could not start: " + e.message + " (is the server running? The first request can take a minute while a free server wakes up.)", "err"); }
+};
+
+async function poll() {
+  try {
+    const r = await fetch(base + "/job/" + jobId); const j = await r.json();
+    $("log").textContent = (j.log || []).join("\n"); $("log").scrollTop = 1e9;
+    if (j.status === "done") { setBusy(false, "Done — " + (j.result && j.result.pages) + " pages. Press Download.", "ok"); $("dl").style.display = "inline-block"; return; }
+    if (j.status === "error") { setBusy(false, "The server could not finish this book. See the log.", "err"); return; }
+  } catch (e) { /* server busy or waking up; try again */ }
+  setTimeout(poll, 3000);
+}
+
+$("dl").onclick = () => { location.href = base + "/download/" + jobId; };
+</script>
+</body>
+</html>
