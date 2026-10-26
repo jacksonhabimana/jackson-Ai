@@ -12,8 +12,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/mhchem.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.6/purify.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.4/mermaid.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/smiles-drawer@2.1.7/dist/smiles-drawer.min.js"></script>
 <style>
   :root{--bg:#0d1117;--surface:#161b22;--surface2:#1c2333;--border:#30363d;--accent:#38bdf8;--gold:#e8c547;--green:#34d399;--red:#f87171;--text:#e6edf3;--muted:#8b949e;}
   *{box-sizing:border-box;margin:0;padding:0;}
@@ -210,8 +208,21 @@
 
 <script>
   const WORKER_URL = "https://chem-payment.hajackson2020.workers.dev/chat";
-  if (window.mermaid) {
-    mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
+  // Mermaid and the molecule drawer are big: load them only when an answer really contains a diagram or structure
+  let _mmP = null, _smP = null;
+  function ensureMermaid() {
+    if (!_mmP) _mmP = (window.mermaid ? Promise.resolve(true) : loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.4/mermaid.min.js')).then((ok) => {
+      if (ok && window.mermaid) { mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' }); return true; }
+      _mmP = null; return false;
+    });
+    return _mmP;
+  }
+  function ensureSmiles() {
+    if (!_smP) _smP = (window.SmilesDrawer ? Promise.resolve(true) : loadScriptOnce('https://cdn.jsdelivr.net/npm/smiles-drawer@2.1.7/dist/smiles-drawer.min.js')).then((ok) => {
+      if (ok && window.SmilesDrawer) return true;
+      _smP = null; return false;
+    });
+    return _smP;
   }
   const messages = document.getElementById('chat-messages');
   const input = document.getElementById('chat-input');
@@ -1085,7 +1096,7 @@
     };
     loadingMsg.textContent = (kind === 'summary' ? 'Summarising' : 'Working on the file') + ': 0 of ' + parts.length + ' parts done…';
     let nextPart = 0;
-    await Promise.all(Array.from({ length: Math.min(3, parts.length) }, async () => { while (nextPart < parts.length) { const k = nextPart++; await runPart(k); } }));
+    await Promise.all(Array.from({ length: Math.min(5, parts.length) }, async () => { while (nextPart < parts.length) { const k = nextPart++; await runPart(k); } }));
     loadingMsg.remove(); currentMessages = currentMessages.filter(m => m.sender !== 'bot loading');
     const done = outs.filter(Boolean);
     if (!done.length) { addMessage('Sorry, I could not process that file right now. Please try again in a moment.', 'bot'); return true; }
@@ -1114,6 +1125,9 @@
     'FIGURES: never replace a diagram, chart, graph, table, structural formula or reaction scheme by a sentence; reproduce it. Diagrams, displayed or structural formulas, reaction schemes, graphs and apparatus become one inline <svg viewBox="0 0 700 H" width="600"> per figure, placed right after the question it belongs to: white background rect, Arial 13-15px text, bonds as lines (a double bond as two parallel lines), atoms as centred text, reagents and conditions above and below the arrows, nothing overlapping, all labels fully inside the viewBox. If a picture is attached and a figure is too complex to redraw exactly, use <img data-crop="ymin,xmin,ymax,xmax" alt="figure"> with a box on a 0 to 1000 scale measured from the top-left corner of the picture (add data-page="N" when several pictures are attached, counting from 1). ' +
     STRUCTURE_RULES + ' ' +
     'COMPLETENESS: include EVERY question and every part, in order, to the very end. Never skip, shorten or write "and so on".';
+  function needsRichRules(q) {
+    return /\b(diagram|draw|sketch|figure|structure|apparatus|graph|curve|chart|flow ?chart|resonance|mechanism|reaction|synthesis|molecule|formula|isomer|bond|lewis|energy profile|scheme|table|compare|comparison|show me|picture|image|equation)\b/i.test(q || '');
+  }
   function detectDocRequest(q) {
     let t = (q || '').toLowerCase();
     if (!t) return null;
@@ -1224,7 +1238,7 @@
     let buf = '', acc = '', live = null, lastPaint = 0, failed = null;
     const paint = (force) => {
       const now = Date.now();
-      if (!force && now - lastPaint < 120) return;
+      if (!force && now - lastPaint < 400) return;
       lastPaint = now;
       if (!live) { loadingMsg.remove(); live = document.createElement('div'); live.className = 'chat-msg bot'; messages.appendChild(live); }
       live.innerHTML = formatBotText(splitImageMarkers(acc).clean);
@@ -1263,9 +1277,8 @@
   // An answer that uses "..." in place of real rows or items is unfinished: ask for it again in full (once)
   function answerLooksAbbreviated(t) { return /^\s*(\.{3}|…)\s*$/m.test(t || '') || /\|\s*(\.{3}|…)\s*\|/.test(t || ''); }
   function redoIfAbbreviated(text) {
-    if (autoRedoDone || !answerLooksAbbreviated(text)) return;
-    autoRedoDone = true;
-    setTimeout(() => regenerateLast("IMPORTANT: your previous answer was incomplete because it used '...' instead of real content. Write the COMPLETE answer now: every row, item and question in full, and never use '...' or '…' as a placeholder."), 400);
+    if (!answerLooksAbbreviated(text)) return;
+    addFixButton(['the full rows or items']);
   }
   // ── Completeness: did the answer give everything that was asked? ──
   function lastUserQuestion() {
@@ -1291,12 +1304,16 @@
   let autoRedoIncomplete = false;
   function checkComplete(text) {
     const miss = missingParts(lastUserQuestion(), text);
-    if (miss.length && !autoRedoIncomplete && !autoRedoDone) {
-      autoRedoIncomplete = true;
-      setTimeout(() => regenerateLast('IMPORTANT: your previous answer left out ' + miss.join(', ') + '. Write the COMPLETE answer again and include everything the user asked for, in order, in full.'), 300);
-      return;
-    }
+    if (miss.length) { addFixButton(miss); return; }
     if (endsCutOff(text)) addContinueButton();
+  }
+  function addFixButton(miss) {
+    if (document.getElementById('continue-btn')) return;
+    const b = document.createElement('button');
+    b.id = 'continue-btn'; b.type = 'button'; b.textContent = 'Something may be missing (' + miss.join(', ') + '): write it in full';
+    b.style.cssText = 'margin:8px 0 8px 12px;padding:7px 14px;border-radius:18px;border:1px solid var(--accent);background:transparent;color:var(--accent);cursor:pointer;font-family:inherit;font-size:.82rem;';
+    b.addEventListener('click', () => { b.remove(); regenerateLast('IMPORTANT: your previous answer left out ' + miss.join(', ') + '. Write the COMPLETE answer again and include everything the user asked for, in order, in full. Never use "..." as a placeholder.'); });
+    messages.appendChild(b); messages.scrollTop = messages.scrollHeight;
   }
   function addContinueButton() {
     if (document.getElementById('continue-btn')) return;
@@ -1398,7 +1415,7 @@
   async function figuresOrDiagram(queries, answerText) {
     if (!queries || !queries.length) return;
     const n = await addFiguresFor(queries);
-    if (!n && !/```svg|<svg|```smiles|```mermaid/i.test(answerText || '')) await drawFallbackDiagram(queries[0]);
+    // (the extra "draw a diagram" AI call was removed: it doubled the waiting time)
   }
   function loadPngBlob(url) { // image URL -> PNG blob (needs a CORS-enabled image, which Wikimedia is)
     return new Promise((resolve, reject) => {
@@ -1677,8 +1694,8 @@
     }
     messages.appendChild(div);
     // Render any Mermaid diagrams that just got inserted.
-    if (sender === 'bot' && window.mermaid && div.querySelector('.mermaid')) {
-      div.querySelectorAll('.mermaid').forEach(async (node) => {
+    if (sender === 'bot' && div.querySelector('.mermaid')) {
+      ensureMermaid().then((okM) => { if (!okM) return; div.querySelectorAll('.mermaid').forEach(async (node) => {
         const src = node.textContent;
         try {
           await mermaid.parse(src);
@@ -1694,9 +1711,12 @@
           node.replaceWith(pre);
         }
         messages.scrollTop = messages.scrollHeight;
-      });
+      }); });
     }
-    if (sender === 'bot') { renderSmilesIn(div); renderSchemeIn(div); decorateDiagrams(div); decorateCode(div); addActionBar(div, text); }
+    if (sender === 'bot' && div.querySelector('.smiles-fig, .scheme-fig')) {
+      ensureSmiles().then((okS) => { if (!okS) return; renderSmilesIn(div); renderSchemeIn(div); decorateDiagrams(div); messages.scrollTop = messages.scrollHeight; });
+    }
+    if (sender === 'bot') { decorateDiagrams(div); decorateCode(div); addActionBar(div, text); }
     if (sender === 'user' && !/^(📷|📄 Attached)/.test(text)) addUserActions(div, text);
     messages.scrollTop = messages.scrollHeight;
     return div;
@@ -1885,13 +1905,13 @@
           if (cm.kind === 'doc') { hist.push({ role: 'model', text: '[I created a document: ' + cm.title + ']' }); continue; }
           if (cm.kind && cm.kind !== 'text') continue;
           if (!cm.text || cm.text.startsWith('Debug info') || cm.text.startsWith('Sorry,') || cm.text.startsWith('📷') || cm.text.startsWith('📄 Attached')) continue;
-          const t = cm.text.replace(/```svg[\s\S]*?```/g, '[diagram]').replace(/```mermaid[\s\S]*?```/g, '[diagram]').slice(0, 30000); // trimmed again below for older turns
+          const t = cm.text.replace(/```svg[\s\S]*?```/g, '[diagram]').replace(/```mermaid[\s\S]*?```/g, '[diagram]').slice(0, 12000); // trimmed again below for older turns
           hist.push({ role: cm.sender === 'user' ? 'user' : 'model', text: t });
         }
         // the last two answers go in full ("summarise the above"); older ones are shortened
-        let keepFull = 2;
-        for (let k = hist.length - 1; k >= 0; k--) { if (hist[k].role === 'model' && keepFull > 0) keepFull--; else hist[k].text = hist[k].text.slice(0, 3000); }
-        requestBody = { mode: 'tutor', prompt: messageText + '\n\n(Give EVERYTHING the user asked for, every part and every item in order, in full, and finish the answer. Never stop early, skip a part, or use "..." as a placeholder.)' + (hint ? '\n\n' + hint : '') + '\n\n' + TUTOR_RICH_RULES, history: hist.slice(-12), stream: true };
+        let keepFull = 1;
+        for (let k = hist.length - 1; k >= 0; k--) { if (hist[k].role === 'model' && keepFull > 0) keepFull--; else hist[k].text = hist[k].text.slice(0, 1200); }
+        requestBody = { mode: 'tutor', prompt: messageText + '\n\n(Give EVERYTHING the user asked for, every part and every item in order, in full, and finish the answer. Never stop early, skip a part, or use "..." as a placeholder.)' + (hint ? '\n\n' + hint : '') + (needsRichRules(question) ? '\n\n' + TUTOR_RICH_RULES : ''), history: hist.slice(-6), stream: true };
       }
       if (imageToSend) requestBody.image = imageToSend;
       if (pagesToSend) requestBody.images = pagesToSend;
