@@ -891,6 +891,20 @@
     clone.querySelectorAll('.katex-display').forEach(d => { const k = d.querySelector('.katex'); if (!k) return; const h = make(k); if (h.hasAttribute('data-omml')) h.setAttribute('data-display', '1'); else h.setAttribute('data-center', '1'); d.replaceWith(h); });
     clone.querySelectorAll('.katex').forEach(k => k.replaceWith(make(k)));
   }
+  // PDF capture: fix formulas so they are drawn once, cleanly (see downloadPdf)
+  function formulasForPdf(root) {
+    Array.from(root.querySelectorAll('.katex')).forEach(k => {
+      const a = k.querySelector('annotation');
+      const src = a ? a.textContent : '';
+      if (!/\\ce\{/.test(src)) return;
+      const display = k.classList.contains('katex-display') || (k.parentElement && k.parentElement.classList.contains('katex-display'));
+      const holder = document.createElement(display ? 'div' : 'span');
+      if (display) holder.style.cssText = 'text-align:center;margin:6px 0;';
+      holder.innerHTML = texToHtml(src);
+      (display && k.parentElement.classList.contains('katex-display') ? k.parentElement : k).replaceWith(holder);
+    });
+    root.querySelectorAll('.katex-mathml').forEach(m => m.remove());
+  }
   async function downloadWord(div, name) {
     const clone = cleanAnswerClone(withFigures(div));
     // Word can't draw KaTeX, so turn formulas into plain text with real sub/superscripts
@@ -969,6 +983,10 @@
       const holder = document.createElement('div');
       holder.style.cssText = 'background:#fff;color:#000;';
       holder.innerHTML = '<style>.pdfdoc{box-sizing:border-box;font-family:Arial,sans-serif;font-size:12pt;line-height:1.5;color:#000;background:#fff;padding:8px}.pdfdoc *:not(svg *){color:#000 !important}.pdfdoc table{border-collapse:collapse}.pdfdoc td,.pdfdoc th{border:1px solid #444;padding:4px 8px}.pdfdoc pre{background:#f2f2f2;padding:6px;white-space:pre-wrap}.pdfdoc{color:#000}.pdfdoc *{text-shadow:none !important}.pdfdoc .chat-msg{display:block !important;background:#fff !important;border:none !important;box-shadow:none !important;max-width:100% !important;width:auto !important;padding:0 !important;margin:0 0 10px !important;border-radius:0 !important}.pdfdoc td,.pdfdoc th{border:1px solid #999 !important}.pdfdoc .svg-diagram{background:#fff !important;border:1px solid #ccc !important;padding:6px !important;margin:8px 0 !important;overflow:visible !important;text-align:center}.pdfdoc .svg-diagram > svg{max-width:100% !important;height:auto}.pdfdoc img{display:block;margin:6px auto}</style><div class="pdfdoc">' + cleanAnswerClone(withFigures(div)).innerHTML + '</div>';
+      // html2canvas cannot hide KaTeX's invisible MathML copy, so every formula was drawn twice on top of itself
+      // (overlapping letters and stray marks). Chemical formulas become plain text with real subscripts/superscripts;
+      // any other formula keeps KaTeX's visible drawing, with the hidden MathML copy removed.
+      formulasForPdf(holder);
       // html2canvas needs real pixel sizes on SVGs (a bare viewBox gets drawn zoomed in)
       holder.querySelectorAll('svg').forEach(sv => {
         const vb = (sv.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
