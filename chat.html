@@ -12,6 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/mhchem.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.6/purify.min.js"></script>
+<!-- Email login: your chats are saved to your account, so they show on every phone and computer -->
+<script src="site-auth.js" defer></script>
 <style>
   :root{--bg:#0d1117;--surface:#161b22;--surface2:#1c2333;--border:#30363d;--accent:#38bdf8;--gold:#e8c547;--green:#34d399;--red:#f87171;--text:#e6edf3;--muted:#8b949e;}
   *{box-sizing:border-box;margin:0;padding:0;}
@@ -185,6 +187,7 @@
       <button id="history-btn" type="button">🕘 Previous Chat</button>
       <div id="history-panel"></div>
     </div>
+    <span id="acct-chip" style="display:none;margin-left:auto;font-size:.75rem;color:var(--muted);align-items:center;gap:8px;"><span id="acct-email"></span><button id="acct-signout" type="button" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:3px 9px;font-size:.72rem;cursor:pointer;">Sign out</button></span>
   </div>
 
   <div id="chat-box">
@@ -240,11 +243,24 @@
 
   // Chat history belongs to the signed-in account: each account gets its own list on this
   // device, so another person (or another account) never sees your chats. Not signed in = 'guest'.
+  // The account email is the identity (names can repeat); older logins without an email fall back to the name.
+  const ACCOUNT_EMAIL = (function () {
+    try { return (localStorage.getItem('teacher_email') || '').trim().toLowerCase(); } catch (e) { return ''; }
+  })();
+  function sessionsKeyFor(who) { return 'jai_sessions_' + who.replace(/[^a-z0-9@._-]+/g, '_').slice(0, 60); }
   const SESSIONS_KEY = (function () {
     let who = 'guest';
-    try { who = (localStorage.getItem('teacher_name') || '').trim().toLowerCase() || 'guest'; } catch (e) {}
-    return 'jai_sessions_' + who.replace(/[^a-z0-9@._-]+/g, '_').slice(0, 60);
+    try { who = ACCOUNT_EMAIL || (localStorage.getItem('teacher_name') || '').trim().toLowerCase() || 'guest'; } catch (e) {}
+    return sessionsKeyFor(who);
   })();
+  try { // chats saved on this device before email login were stored under the name: bring them into the email account once
+    if (ACCOUNT_EMAIL) {
+      const oldKey = sessionsKeyFor((localStorage.getItem('teacher_name') || '').trim().toLowerCase() || 'guest');
+      if (oldKey !== SESSIONS_KEY && oldKey !== 'jai_sessions_guest' && !localStorage.getItem(SESSIONS_KEY) && localStorage.getItem(oldKey)) {
+        localStorage.setItem(SESSIONS_KEY, localStorage.getItem(oldKey));
+      }
+    }
+  } catch (e) {}
   try { // old shared list from before accounts: keep it only for guests, never show it to a signed-in account
     const legacy = localStorage.getItem('jai_sessions');
     if (legacy !== null) {
@@ -265,10 +281,15 @@
   }
   function persistCurrentSession() {
     if (!currentMessages.some(m => m.sender === 'user')) return; // nothing real to save yet
+    if (getDeleted()[currentSessionId]) currentSessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8); // the open chat was deleted: keep going as a new chat
     const sessions = getSessions();
     const firstUserMsg = currentMessages.find(m => m.sender === 'user');
     const title = (firstUserMsg?.text || 'New chat').replace(/\s+/g, ' ').slice(0, 70);
     const idx = sessions.findIndex(s => s.id === currentSessionId);
+    if (idx >= 0) { // nothing new since the last save (just opened or switched away): keep its date, don't re-sync
+      const prev = sessions[idx].messages || [], last = prev[prev.length - 1], cur = currentMessages[currentMessages.length - 1];
+      if (prev.length === currentMessages.length && last && cur && last.text === cur.text && last.kind === cur.kind) return;
+    }
     const record = { id: currentSessionId, title, updatedAt: Date.now(), messages: currentMessages };
     if (idx >= 0) sessions[idx] = record; else sessions.unshift(record);
     if (!saveSessions(sessions)) {
@@ -280,6 +301,78 @@
           m.text && m.text.length > 4000 ? { ...m, text: m.text.slice(0, 4000) + ' …' } : m)
       }));
       saveSessions(compact);
+    }
+    scheduleCloudSync();
+  }
+
+  // ---- Cloud sync: chats follow the signed-in email account to every phone and computer ----
+  const CLOUD_URL = WORKER_URL.replace(/\/chat$/, '/chats');
+  const DELETED_KEY = SESSIONS_KEY + '_deleted'; // ids deleted here, so a deleted chat is not brought back from the cloud
+  function authToken() { try { return localStorage.getItem('teacher_token') || ''; } catch (e) { return ''; } }
+  function getDeleted() {
+    try {
+      const o = JSON.parse(localStorage.getItem(DELETED_KEY) || '{}'), cutoff = Date.now() - 30 * 86400000;
+      Object.keys(o).forEach(k => { if (o[k] < cutoff) delete o[k]; });
+      return o;
+    } catch (e) { return {}; }
+  }
+  function markDeleted(ids) {
+    const o = getDeleted(), now = Date.now();
+    ids.forEach(id => { o[id] = now; });
+    try { localStorage.setItem(DELETED_KEY, JSON.stringify(o)); } catch (e) {}
+    scheduleCloudSync(400);
+  }
+  // Big pictures stay on the device that made them; the cloud keeps the text and documents.
+  function cloudSafe(arr) {
+    return arr.map(s => ({
+      ...s,
+      messages: (s.messages || []).map(m =>
+        m.kind === 'bot-image' && typeof m.imageUrl === 'string' && m.imageUrl.startsWith('data:') && m.imageUrl.length > 150000
+          ? { sender: m.sender, kind: 'text', text: '[Picture: ' + (m.caption || 'image') + ' — open this chat on the device where you made it to see it]' }
+          : m)
+    }));
+  }
+  let syncTimer = null, syncing = false, syncAgain = false;
+  function scheduleCloudSync(delay) {
+    if (!authToken()) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(cloudSync, delay === undefined ? 1500 : delay);
+  }
+  async function cloudSync() {
+    if (!authToken()) return;
+    if (syncing) { syncAgain = true; return; }
+    syncing = true;
+    try {
+      const deleted = getDeleted();
+      const r = await fetch(CLOUD_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Teacher-Token': authToken() },
+        body: JSON.stringify({ chats: cloudSafe(getSessions().filter(s => !deleted[s.id])), deleted: Object.keys(deleted) })
+      });
+      if (!r.ok) return; // not signed in any more, or the cloud is unreachable: the chats stay safe on this device
+      const d = await r.json();
+      if (!d || !Array.isArray(d.chats)) return;
+      // chats deleted on another device are removed here too
+      if (Array.isArray(d.deleted) && d.deleted.length) {
+        const o = getDeleted(), now = Date.now();
+        d.deleted.forEach(id => { if (typeof id === 'string' && !o[id]) o[id] = now; });
+        try { localStorage.setItem(DELETED_KEY, JSON.stringify(o)); } catch (e) {}
+      }
+      // merge: newest copy of each chat wins; the copy on this device wins a tie (it still has pictures)
+      const nowDeleted = getDeleted(), byId = new Map();
+      getSessions().forEach(s => { if (!nowDeleted[s.id]) byId.set(s.id, s); });
+      d.chats.forEach(c => {
+        if (!c || !c.id || nowDeleted[c.id]) return;
+        const mine = byId.get(c.id);
+        if (!mine || (c.updatedAt || 0) > (mine.updatedAt || 0)) byId.set(c.id, c);
+      });
+      saveSessions(Array.from(byId.values()).sort((a, b) => b.updatedAt - a.updatedAt));
+      const panel = document.getElementById('history-panel');
+      if (panel && panel.classList.contains('open')) renderHistoryPanel();
+    } catch (e) { /* offline: try again on the next save */ }
+    finally {
+      syncing = false;
+      if (syncAgain) { syncAgain = false; scheduleCloudSync(500); }
     }
   }
   function relativeDate(ts) {
@@ -322,7 +415,8 @@
       const clr = document.createElement('button');
       clr.type = 'button'; clr.className = 'history-clear'; clr.textContent = 'Clear all';
       clr.addEventListener('click', () => {
-        if (confirm('Delete ALL your saved chats on this device? This cannot be undone.')) {
+        if (confirm(authToken() ? 'Delete ALL your saved chats from your account, on every device? This cannot be undone.' : 'Delete ALL your saved chats on this device? This cannot be undone.')) {
+          markDeleted(getSessions().map(x => x.id));
           saveSessions([]); renderHistoryPanel('');
         }
       });
@@ -365,6 +459,7 @@
       delBtn.textContent = '✕';
       delBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        markDeleted([s.id]);
         saveSessions(getSessions().filter(x => x.id !== s.id));
         renderHistoryPanel();
       });
@@ -2270,6 +2365,24 @@
       document.getElementById('history-panel').classList.remove('open');
     }
   });
+
+  // Account chip + cloud sync start-up
+  (function () {
+    if (authToken()) {
+      const chip = document.getElementById('acct-chip');
+      document.getElementById('acct-email').textContent = ACCOUNT_EMAIL || (localStorage.getItem('teacher_name') || '');
+      chip.style.display = 'inline-flex';
+      document.getElementById('acct-signout').addEventListener('click', () => {
+        persistCurrentSession();
+        if (window.siteLogout) window.siteLogout();
+        else { try { ['teacher_token', 'teacher_name', 'teacher_email'].forEach(k => localStorage.removeItem(k)); } catch (e) {} location.reload(); }
+      });
+      cloudSync(); // bring in the chats made on your other devices
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') cloudSync(); });
+    }
+    // right after the email login, reload once so the page opens with that account's chats
+    window.addEventListener('site-auth-login', () => location.reload());
+  })();
 
   sendBtn.addEventListener('click', () => sendQuestion());
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendQuestion(); });

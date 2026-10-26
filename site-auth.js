@@ -79,7 +79,7 @@
     };
 
     window.__saLogin = async function(){
-      const username = document.getElementById('sa-username').value.trim();
+      const username = document.getElementById('sa-username').value.trim().toLowerCase();
       const password = document.getElementById('sa-password').value;
       const err = document.getElementById('sa-login-error');
       err.style.display = 'none';
@@ -114,6 +114,11 @@
         err.style.display = 'block';
         return;
       }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(username)) {
+        err.textContent = 'Please enter a valid email address (for example name@gmail.com).';
+        err.style.display = 'block';
+        return;
+      }
       try {
         const r = await fetch(REGISTER_URL, {
           method: 'POST',
@@ -136,8 +141,11 @@
     function saSuccess(token, name, username){
       localStorage.setItem('teacher_token', token);
       localStorage.setItem('teacher_name', name || username);
+      // The email is the account identity: pages use it to keep each account's data separate.
+      localStorage.setItem('teacher_email', String(username || '').trim().toLowerCase());
       document.body.style.overflow = '';
       gate.remove();
+      window.dispatchEvent(new Event('site-auth-login'));
     }
   }
 })();
@@ -146,5 +154,6 @@
 window.siteLogout = function(){
   localStorage.removeItem('teacher_token');
   localStorage.removeItem('teacher_name');
+  localStorage.removeItem('teacher_email');
   location.reload();
 };
