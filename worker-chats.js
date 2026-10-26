@@ -1,5 +1,6 @@
 // ============================================================
-// worker-chats.js — cloud storage for Jackson AI chat history
+// worker-chats.js — cloud storage for Jackson AI: chat history AND saved tool items
+// (lesson plans, schemes of work, exams, summary notes)
 //
 // Add this to the chem-payment Worker (Cloudflare dashboard → Workers & Pages →
 // chem-payment → Edit code), then:
@@ -10,19 +11,21 @@
 //      (and make sure the OPTIONS/CORS reply allows the X-Teacher-Token header —
 //       the lesson-plan and scheme pages already send it, so it probably does)
 //
-// The browser (chat.html) sends: POST /chats  { chats:[...], deleted:[ids] }
+// The browser sends: POST /chats  { kind, chats:[...], deleted:[ids] }
+//   kind = 'chat' (Jackson AI chat) or 'lesson-plan' | 'scheme' | 'exam' | 'notes'
 // and receives the merged list: { chats:[...], deleted:[ids] }.
-// Each account has ONE record, found from the login token — a person can never read another's chats.
+// Each account has ONE record per kind, found from the login token — a person can
+// never read another person's items.
 // ============================================================
 
-const CHATS_MAX = 300;            // chats kept per account
+const CHATS_MAX = 300;            // items kept per account and kind
 const CHATS_MAX_BYTES = 20 * 1024 * 1024; // KV values can be up to 25 MB
-const TOMBSTONE_DAYS = 60;        // how long a deleted chat id is remembered so other devices can drop it
+const TOMBSTONE_DAYS = 60;        // how long a deleted id is remembered so other devices can drop it
 
 // TODO: must return the account's email/username for a valid login token, or null.
 // Use exactly the same check the Worker already uses for /teachers/* and the generators
 // (the X-Teacher-Token header). Until this is filled in, /chats answers 401 and
-// chats simply stay on the device — nothing breaks.
+// everything simply stays on the device — nothing breaks.
 async function chatUserFromToken(token, env) {
   return null;
 }
@@ -49,10 +52,13 @@ async function handleChats(request, env) {
 
   let body;
   try { body = await request.json(); } catch (e) { return chatsJson({ error: 'bad json' }, 400, request); }
+  const kind = body.kind === undefined ? 'chat' : String(body.kind);
+  if (!/^[a-z][a-z-]{0,29}$/.test(kind)) return chatsJson({ error: 'bad kind' }, 400, request);
+  const isChat = kind === 'chat';
   const incoming = Array.isArray(body.chats) ? body.chats : [];
   const incomingDeleted = Array.isArray(body.deleted) ? body.deleted.filter(x => typeof x === 'string').slice(0, 2000) : [];
 
-  const key = 'chats:' + String(user).trim().toLowerCase();
+  const key = (isChat ? 'chats:' : 'hist:' + kind + ':') + String(user).trim().toLowerCase();
   let rec = { chats: [], deleted: {} };
   try { const raw = await env.JAI_CHATS.get(key); if (raw) rec = JSON.parse(raw); } catch (e) {}
   if (!Array.isArray(rec.chats)) rec.chats = [];
@@ -65,16 +71,19 @@ async function handleChats(request, env) {
   const byId = new Map();
   rec.chats.forEach(c => { if (c && c.id && !rec.deleted[c.id]) byId.set(c.id, c); });
   incoming.forEach(c => {
-    if (!c || typeof c.id !== 'string' || rec.deleted[c.id] || !Array.isArray(c.messages)) return;
+    if (!c || typeof c.id !== 'string' || rec.deleted[c.id]) return;
+    if (isChat ? !Array.isArray(c.messages) : (!c.data || typeof c.data !== 'object')) return;
     const mine = byId.get(c.id);
     if (!mine || (c.updatedAt || 0) > (mine.updatedAt || 0)) {
-      byId.set(c.id, { id: c.id, title: String(c.title || 'New chat').slice(0, 120), updatedAt: Number(c.updatedAt) || now, messages: c.messages });
+      const item = { id: c.id, title: String(c.title || (isChat ? 'New chat' : 'Saved item')).slice(0, 120), updatedAt: Number(c.updatedAt) || now };
+      if (isChat) item.messages = c.messages; else item.data = c.data;
+      byId.set(c.id, item);
     }
   });
 
   let chats = Array.from(byId.values()).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, CHATS_MAX);
   let out = JSON.stringify({ chats, deleted: rec.deleted });
-  while (out.length > CHATS_MAX_BYTES && chats.length > 1) { // too big: drop the oldest chats
+  while (out.length > CHATS_MAX_BYTES && chats.length > 1) { // too big: drop the oldest items
     chats = chats.slice(0, Math.floor(chats.length * 0.9));
     out = JSON.stringify({ chats, deleted: rec.deleted });
   }

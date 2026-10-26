@@ -83,13 +83,14 @@ select:disabled{opacity:.45;cursor:not-allowed}
 </style>
 </head>
 <body>
+<script src="tool-history.js"></script>
 <div id="teacher-lock" style="position:fixed;inset:0;background:#0d1117;z-index:99999;display:flex;align-items:center;justify-content:center;">
   <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:32px;max-width:340px;width:90%;text-align:center;">
 
     <div id="tl-login-box">
-      <h2 style="color:#fff;font-family:Georgia,serif;margin-bottom:6px;">Teacher Login</h2>
-      <p style="color:#8b949e;font-size:.85rem;margin-bottom:20px;">Log in to use this tool</p>
-      <input type="text" id="tl-username" placeholder="Username" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:12px;font-size:.93rem;"/>
+      <h2 style="color:#fff;font-family:Georgia,serif;margin-bottom:6px;">Sign in with your email</h2>
+      <p style="color:#8b949e;font-size:.85rem;margin-bottom:20px;">Sign in with your email to use this tool &mdash; your saved work will be here on every device</p>
+      <input type="text" id="tl-username" autocomplete="username" inputmode="email" placeholder="Email address" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:12px;font-size:.93rem;"/>
       <input type="password" id="tl-password" placeholder="Password" onkeydown="if(event.key==='Enter')teacherLogin()" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:16px;font-size:.93rem;"/>
       <button onclick="teacherLogin()" style="width:100%;background:#38bdf8;color:#0d1117;border:none;border-radius:6px;padding:11px;font-weight:bold;cursor:pointer;">Log In</button>
       <p id="tl-error" style="color:#f87171;margin-top:12px;font-size:.85rem;display:none;"></p>
@@ -97,10 +98,10 @@ select:disabled{opacity:.45;cursor:not-allowed}
     </div>
 
     <div id="tl-register-box" style="display:none;">
-      <h2 style="color:#fff;font-family:Georgia,serif;margin-bottom:6px;">Teacher Registration</h2>
+      <h2 style="color:#fff;font-family:Georgia,serif;margin-bottom:6px;">Create your account</h2>
       <p style="color:#8b949e;font-size:.85rem;margin-bottom:20px;">Create your account</p>
       <input type="text" id="tr-name" placeholder="Full Name" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:12px;font-size:.93rem;"/>
-      <input type="text" id="tr-username" placeholder="Choose a username" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:12px;font-size:.93rem;"/>
+      <input type="text" id="tr-username" placeholder="Your email address" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:12px;font-size:.93rem;"/>
       <input type="password" id="tr-password" placeholder="Choose a password (min 4 chars)" onkeydown="if(event.key==='Enter')teacherRegister()" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:16px;font-size:.93rem;"/>
       <button onclick="teacherRegister()" style="width:100%;background:#38bdf8;color:#0d1117;border:none;border-radius:6px;padding:11px;font-weight:bold;cursor:pointer;">Register</button>
       <p id="tr-error" style="color:#f87171;margin-top:12px;font-size:.85rem;display:none;"></p>
@@ -131,11 +132,13 @@ function tlShowLogin(){
 function tlOnSuccess(token, name, username){
   localStorage.setItem('teacher_token', token);
   localStorage.setItem('teacher_name', name || username);
+  localStorage.setItem('teacher_email', String(username || '').trim().toLowerCase());
+  setTimeout(function(){ window.dispatchEvent(new Event('jai-login')); }, 0);
   document.getElementById('teacher-lock').style.display = 'none';
 }
 
 async function teacherLogin(){
-  const username = document.getElementById('tl-username').value.trim();
+  const username = document.getElementById('tl-username').value.trim().toLowerCase();
   const password = document.getElementById('tl-password').value;
   const err = document.getElementById('tl-error');
   err.style.display = 'none';
@@ -150,7 +153,7 @@ async function teacherLogin(){
     if (r.ok && d.token) {
       tlOnSuccess(d.token, d.name, username);
     } else {
-      err.textContent = d.error || 'Invalid username or password.';
+      err.textContent = d.error || 'Invalid email or password.';
       err.style.display = 'block';
     }
   } catch(e) {
@@ -167,6 +170,11 @@ async function teacherRegister(){
   err.style.display = 'none';
   if (!name || !username || !password) {
     err.textContent = 'Please fill in all fields.';
+    err.style.display = 'block';
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(username)) {
+    err.textContent = 'Please enter a valid email address (for example name@gmail.com).';
     err.style.display = 'block';
     return;
   }
@@ -192,6 +200,7 @@ async function teacherRegister(){
 function teacherLogout(){
   localStorage.removeItem('teacher_token');
   localStorage.removeItem('teacher_name');
+  localStorage.removeItem('teacher_email');
   location.reload();
 }
 </script>
@@ -1821,6 +1830,8 @@ async function doGen(){
 }
 
 function renderExam(info,exam){
+  _currentInfo=info;_currentExam=exam;
+  _hs(exam,{info:info,exam:exam,ms:(_msExam===exam?_currentMS:null)});
   const d=info.date?new Date(info.date).toLocaleDateString('en-RW',{year:'numeric',month:'long',day:'numeric'}):'';
   let html=`<div style="padding:16px;font-family:Arial,sans-serif">
 
@@ -2025,12 +2036,17 @@ ${secHTML}
   URL.revokeObjectURL(url);
 }
 
+var _jaiH=null;
+function _hs(h,d){try{if(_jaiH)_jaiH.save(h,d);}catch(e){}}
+try{_jaiH=JaiHistory.attach({kind:'exam',label:'exams',single:'exam',title:function(d){var i=d.info||{};return (i.examType||'Exam')+' \u2014 '+(i.subj||'')+' '+(i.lv||'')+(i.topicName?' \u00B7 '+i.topicName:(i.unitName?' \u00B7 '+i.unitName:''));},restore:function(d){_currentMS=d.ms||null;_msExam=d.ms?d.exam:null;renderExam(d.info,d.exam);}});}catch(e){console.log('History unavailable:',e&&e.message);}
+
 function goBack(){
   document.getElementById('out-wrap').style.display='none';
   document.getElementById('form-wrap').style.display='block';
 }
 
 let _currentMS = null;
+let _msExam = null; // the exam the current marking scheme belongs to
 
 async function genMarkingScheme(){
   if(!_currentExam||!_currentInfo)return;
@@ -2038,6 +2054,7 @@ async function genMarkingScheme(){
   // Show modal with loading
   document.getElementById('ms-modal').style.display='block';
   document.body.style.overflow='hidden';
+  if(_currentMS&&_msExam===_currentExam){renderMS(_currentMS);return;} // already made for this exam (e.g. opened from My saved exams)
   document.getElementById('ms-body').innerHTML=`<div class="lbox"><div class="sp2"></div><p>Jackson AI is generating the marking scheme&hellip;</p><p class="sub">Creating answers for <em>${_currentInfo.unitName}</em></p></div>`;
 
   // Build exam questions text for prompt
@@ -2080,7 +2097,8 @@ Provide correct answers for ALL questions. Label sub-parts exactly as (a), (b), 
     }catch{
       ms={title:'Marking Scheme',sections:[{title:'Answers',answers:[{number:1,answer:raw.substring(0,2000),explanation:''}]}]};
     }
-    _currentMS=ms;
+    _currentMS=ms;_msExam=_currentExam;
+    _hs(_currentExam,{info:_currentInfo,exam:_currentExam,ms:ms});
     renderMS(ms);
   }catch(e){
     document.getElementById('ms-body').innerHTML=`<div class="lbox"><p style="color:#e53e3e">${e.message}</p></div>`;
