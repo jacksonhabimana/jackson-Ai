@@ -1,5 +1,5 @@
 // ============================================================
-// site-auth.js — Jackson Habimana Chemistry Portal
+// site-auth.js — Jackson Habimana Education Portal
 // Site-wide login gate. Include with:
 // <script src="site-auth.js" defer></script>
 // in every page's <head> that should require login.
@@ -26,7 +26,7 @@
       <div style="background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.12);padding:36px 32px;max-width:400px;width:100%;">
 
         <div id="sa-login-box">
-          <h1 style="font-size:1.4rem;font-weight:800;color:#111827;margin-bottom:6px;">WELCOME TO JACKSON HABIMANA CHEMISTRY PORTAL</h1>
+          <h1 style="font-size:1.4rem;font-weight:800;color:#111827;margin-bottom:6px;">WELCOME TO JACKSON HABIMANA EDUCATION PORTAL</h1>
           <p style="color:#6b7280;font-size:.9rem;margin-bottom:22px;">Sign in to your account to continue</p>
 
           <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:6px;">EMAIL ADDRESS</label>
@@ -46,7 +46,7 @@
 
         <div id="sa-register-box" style="display:none;">
           <h1 style="font-size:1.4rem;font-weight:800;color:#111827;margin-bottom:6px;">CREATE YOUR ACCOUNT</h1>
-          <p style="color:#6b7280;font-size:.9rem;margin-bottom:22px;">Join Jackson Habimana Chemistry Portal</p>
+          <p style="color:#6b7280;font-size:.9rem;margin-bottom:22px;">Join Jackson Habimana Education Portal</p>
 
           <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:6px;">FULL NAME</label>
           <input type="text" id="sa-reg-name" placeholder="Your full name" style="width:100%;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:.92rem;margin-bottom:16px;outline:none;"/>
