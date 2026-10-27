@@ -55,7 +55,7 @@
           <input type="text" id="sa-reg-username" autocomplete="email" inputmode="email" placeholder="e.g. yourname@gmail.com" style="width:100%;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:.92rem;margin-bottom:16px;outline:none;"/>
 
           <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:6px;">PASSWORD</label>
-          <input type="password" id="sa-reg-password" placeholder="Password (min 4 characters)" onkeydown="if(event.key==='Enter')window.__saRegister()" style="width:100%;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:.92rem;margin-bottom:18px;outline:none;"/>
+          <input type="password" id="sa-reg-password" placeholder="e.g. Kigali2026 (4+ characters)" onkeydown="if(event.key==='Enter')window.__saRegister()" style="width:100%;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:.92rem;margin-bottom:18px;outline:none;"/>
 
           <button onclick="window.__saRegister()" style="width:100%;background:linear-gradient(135deg,#374151,#1f2937);color:#fff;border:none;border-radius:10px;padding:13px;font-weight:700;font-size:.93rem;cursor:pointer;">Create account</button>
 
