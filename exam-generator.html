@@ -90,8 +90,8 @@ select:disabled{opacity:.45;cursor:not-allowed}
     <div id="tl-login-box">
       <h2 style="color:#fff;font-family:Georgia,serif;margin-bottom:6px;">Sign in with your email</h2>
       <p style="color:#8b949e;font-size:.85rem;margin-bottom:20px;">Sign in with your email to use this tool &mdash; your saved work will be here on every device</p>
-      <input type="text" id="tl-username" autocomplete="username" inputmode="email" placeholder="Email address" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:12px;font-size:.93rem;"/>
-      <input type="password" id="tl-password" placeholder="Password" onkeydown="if(event.key==='Enter')teacherLogin()" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:16px;font-size:.93rem;"/>
+      <input type="text" id="tl-username" autocomplete="username" inputmode="email" placeholder="Email, e.g. yourname@gmail.com" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:12px;font-size:.93rem;"/>
+      <input type="password" id="tl-password" placeholder="Your password" onkeydown="if(event.key==='Enter')teacherLogin()" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:16px;font-size:.93rem;"/>
       <button onclick="teacherLogin()" style="width:100%;background:#38bdf8;color:#0d1117;border:none;border-radius:6px;padding:11px;font-weight:bold;cursor:pointer;">Log In</button>
       <p id="tl-error" style="color:#f87171;margin-top:12px;font-size:.85rem;display:none;"></p>
       <p style="margin-top:16px;font-size:.85rem;color:#8b949e;">New here? <a href="#" onclick="tlShowRegister();return false;" style="color:#38bdf8;">Create an account</a></p>
@@ -99,10 +99,10 @@ select:disabled{opacity:.45;cursor:not-allowed}
 
     <div id="tl-register-box" style="display:none;">
       <h2 style="color:#fff;font-family:Georgia,serif;margin-bottom:6px;">Create your account</h2>
-      <p style="color:#8b949e;font-size:.85rem;margin-bottom:20px;">Create your account</p>
-      <input type="text" id="tr-name" placeholder="Full Name" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:12px;font-size:.93rem;"/>
-      <input type="text" id="tr-username" placeholder="Your email address" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:12px;font-size:.93rem;"/>
-      <input type="password" id="tr-password" placeholder="Choose a password (min 4 chars)" onkeydown="if(event.key==='Enter')teacherRegister()" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:16px;font-size:.93rem;"/>
+      <p style="color:#8b949e;font-size:.85rem;margin-bottom:20px;">Use your own email &mdash; you will sign in with it on your phone and computer</p>
+      <input type="text" id="tr-name" autocomplete="name" placeholder="Full name, e.g. Jean Uwimana" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:12px;font-size:.93rem;"/>
+      <input type="text" id="tr-username" autocomplete="email" inputmode="email" placeholder="Email, e.g. yourname@gmail.com" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:12px;font-size:.93rem;"/>
+      <input type="password" id="tr-password" placeholder="Password (min 4 characters)" onkeydown="if(event.key==='Enter')teacherRegister()" style="width:100%;background:#1c2333;border:1px solid #30363d;border-radius:6px;color:#fff;padding:10px 14px;margin-bottom:16px;font-size:.93rem;"/>
       <button onclick="teacherRegister()" style="width:100%;background:#38bdf8;color:#0d1117;border:none;border-radius:6px;padding:11px;font-weight:bold;cursor:pointer;">Register</button>
       <p id="tr-error" style="color:#f87171;margin-top:12px;font-size:.85rem;display:none;"></p>
       <p style="margin-top:16px;font-size:.85rem;color:#8b949e;">Already have an account? <a href="#" onclick="tlShowLogin();return false;" style="color:#38bdf8;">Log in</a></p>

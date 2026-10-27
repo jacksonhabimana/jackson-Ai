@@ -30,7 +30,7 @@
           <p style="color:#6b7280;font-size:.9rem;margin-bottom:22px;">Sign in to your account to continue</p>
 
           <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:6px;">EMAIL ADDRESS</label>
-          <input type="text" id="sa-username" placeholder="you@example.com" style="width:100%;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:.92rem;margin-bottom:16px;outline:none;"/>
+          <input type="text" id="sa-username" autocomplete="username" inputmode="email" placeholder="e.g. yourname@gmail.com" style="width:100%;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:.92rem;margin-bottom:16px;outline:none;"/>
 
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
             <label style="font-size:.72rem;font-weight:700;color:#374151;letter-spacing:.5px;">PASSWORD</label>
@@ -46,16 +46,16 @@
 
         <div id="sa-register-box" style="display:none;">
           <h1 style="font-size:1.4rem;font-weight:800;color:#111827;margin-bottom:6px;">CREATE YOUR ACCOUNT</h1>
-          <p style="color:#6b7280;font-size:.9rem;margin-bottom:22px;">Join Jackson Habimana Education Portal</p>
+          <p style="color:#6b7280;font-size:.9rem;margin-bottom:22px;">Join Jackson Habimana Education Portal. Use your own email &mdash; you will sign in with it on your phone and computer.</p>
 
           <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:6px;">FULL NAME</label>
-          <input type="text" id="sa-reg-name" placeholder="Your full name" style="width:100%;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:.92rem;margin-bottom:16px;outline:none;"/>
+          <input type="text" id="sa-reg-name" autocomplete="name" placeholder="e.g. Jean Uwimana" style="width:100%;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:.92rem;margin-bottom:16px;outline:none;"/>
 
           <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:6px;">EMAIL ADDRESS</label>
-          <input type="text" id="sa-reg-username" placeholder="you@example.com" style="width:100%;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:.92rem;margin-bottom:16px;outline:none;"/>
+          <input type="text" id="sa-reg-username" autocomplete="email" inputmode="email" placeholder="e.g. yourname@gmail.com" style="width:100%;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:.92rem;margin-bottom:16px;outline:none;"/>
 
           <label style="display:block;font-size:.72rem;font-weight:700;color:#374151;letter-spacing:.5px;margin-bottom:6px;">PASSWORD</label>
-          <input type="password" id="sa-reg-password" placeholder="Choose a password (min 4 chars)" onkeydown="if(event.key==='Enter')window.__saRegister()" style="width:100%;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:.92rem;margin-bottom:18px;outline:none;"/>
+          <input type="password" id="sa-reg-password" placeholder="Password (min 4 characters)" onkeydown="if(event.key==='Enter')window.__saRegister()" style="width:100%;border:1px solid #d1d5db;border-radius:10px;padding:12px 14px;font-size:.92rem;margin-bottom:18px;outline:none;"/>
 
           <button onclick="window.__saRegister()" style="width:100%;background:linear-gradient(135deg,#374151,#1f2937);color:#fff;border:none;border-radius:10px;padding:13px;font-weight:700;font-size:.93rem;cursor:pointer;">Create account</button>
 
